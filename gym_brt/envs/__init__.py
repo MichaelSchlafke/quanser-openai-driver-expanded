@@ -4,6 +4,10 @@ from gym_brt.envs.qube_swingup_env import (
     QubeSwingupFollowEnv,
     QubeSwingupFollowSparseEnv,
 )
+from qube_swingup_custom_env import (  # custom reward functions for swingup
+    QubeSwingupStatesSquaredEnv
+)
+
 from gym_brt.envs.qube_balance_env import (
     QubeBalanceEnv,
     QubeBalanceSparseEnv,
