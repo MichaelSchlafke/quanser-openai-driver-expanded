@@ -64,3 +64,33 @@ class QubeSwingupStatesSquaredEnv(QubeBaseEnv):
         super(QubeSwingupStatesSquaredEnv, self).reset()
         state = self._reset_down()
         return state
+
+
+class QubeSwingupStateIntegralEnv(QubeSwingupStatesSquaredEnv):
+    """"
+        Reward:
+        r(s_t, a_t) = 1 - (0.75 * alpha^2 + 0.15 * theta^2 + 0.05 * alpha_dot^2 + 0.05 * theta_dot^2)
+    """
+    def __init__(self, *args, **kwargs):
+        super(QubeSwingupStateIntegralEnv, self).__init__(*args, **kwargs)
+        self._alpha_integral = 0
+        self._theta_integral = 0
+        self._alpha_dot_integral = 0
+        self._theta_dot_integral = 0
+
+    def _reward(self):
+        # identical to QubeSwingupStatesSquaredEnv
+        alpha_sqrd = np.square(self._alpha / np.pi)
+        theta_sqrd = np.square((self._target_angle - self._theta) / np.pi)
+        alpha_dot_sqrd = np.square(self._alpha_dot / np.pi)
+        theta_dot_sqrd = np.square(self._theta_dot / np.pi)
+        state_sqrd = (0.75 * alpha_sqrd + 0.15 * theta_sqrd + 0.05 * alpha_dot_sqrd + 0.05 * theta_dot_sqrd)
+        # summation of previous states
+        self._alpha_integral += alpha_sqrd
+        self._theta_integral += theta_sqrd
+        self._alpha_dot_integral += alpha_dot_sqrd
+        self._theta_dot_integral += theta_dot_sqrd
+        state_integral = (0.75 * self._alpha_integral + 0.15 * self._theta_integral + 0.05 * self._alpha_dot_integral + 0.05 * self._theta_dot_integral)
+        # reward calculation
+        reward = 1 - 0.7 * state_sqrd - 0.3 * min(state_integral / 100, 1)  # TODO: replace 100 with max_episode_steps
+        return max(reward, 0)  # Clip for the follow env case
