@@ -143,10 +143,6 @@ def plot_durations(show_result=False):
             display.display(plt.gcf())
 
 
-# render each episode?
-renderer = True
-
-
 def optimize_model():
     if len(memory) < BATCH_SIZE:
         return
@@ -198,6 +194,9 @@ if torch.cuda.is_available():
     num_episodes = 600
 else:
     num_episodes = 50
+
+# render each episode?
+renderer = True
 
 with QubeSwingupEnv(use_simulator=True) as env:
     for i_episode in range(num_episodes):
