@@ -235,6 +235,20 @@ register(
     max_episode_steps=2048,
     kwargs={'use_simulator': True}
 )
+# custom environments:
+register(  # discrete action space
+    id='QubeSwingupDescActEnv-v0',
+    entry_point='gym_brt.envs:QubeSwingupDescActEnv',
+    max_episode_steps=2048,
+    kwargs={'use_simulator': True}
+)
+register(  # continuous action space + square reward
+    id='QubeSwingupStatesSquaredEnv-v0',
+    entry_point='gym_brt.envs:QubeSwingupStatesSquaredEnv',
+    max_episode_steps=2048,
+    kwargs={'use_simulator': True}
+)
+
 # Rotor Evironments
 # Note: the rotor environments have issues with the rewards.
 # register(
