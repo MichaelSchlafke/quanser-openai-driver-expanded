@@ -18,6 +18,7 @@ except ImportError:
 
 from gym_brt.quanser import QubeSimulator
 from gym_brt.envs.rendering import QubeRenderer
+from gym_brt.envs.qube_base_env import QubeBaseEnv
 
 
 MAX_MOTOR_VOLTAGE = 3
@@ -27,7 +28,8 @@ OBS_MAX = np.asarray([np.pi / 2, np.pi, np.inf, np.inf], dtype=np.float64)
 
 
 class QubeDiscBaseEnv(gym.Env):
-    """A base class for all qube-based environments."""
+    """A modification of qube_base_env.
+     This class is for discrete action spaces and allows for the actions left, right and no action."""
 
     def __init__(
         self,
@@ -37,8 +39,7 @@ class QubeDiscBaseEnv(gym.Env):
         encoder_reset_steps=int(1e8),
     ):
         self.observation_space = spaces.Box(-OBS_MAX, OBS_MAX)
-        self.action_bins = 100
-        self.action_space = np.arrange(-ACT_MAX, ACT_MAX, self.action_bins)
+        self.action_space = np.array([-ACT_MAX, 0, ACT_MAX])
 
         self._frequency = frequency
         # Ensures that samples in episode are the same as batch size
@@ -168,3 +169,17 @@ class QubeDiscBaseEnv(gym.Env):
         self.qube.close(type=type, value=value, traceback=traceback)
         if self._viewer is not None:
             self._viewer.close()
+
+
+# same but through inheritance
+class QubeDiscBaseEnvINH(QubeBaseEnv): # TODO: test this vs QubeDiscBaseEnv
+    def __init__(
+            self,
+            frequency=250,
+            batch_size=2048,
+            use_simulator=False,
+            encoder_reset_steps=int(1e8),
+    ):
+        super().__init__()
+        self.action_space = np.array([-ACT_MAX, 0, ACT_MAX])
+

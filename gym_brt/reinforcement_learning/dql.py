@@ -85,7 +85,7 @@ TAU = 0.005
 LR = 1e-4
 
 # Get number of actions from gym action space
-n_actions = env.action_space.n  # TODO: make compatible with continuous action space
+n_actions = env.action_space.n  # TODO: ensure compatability with discrete action spaces
 # Get the number of state observations
 state = env.reset()
 n_observations = len(state)
