@@ -12,6 +12,7 @@ from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv
 #import gymnasium as gym
 import math
 import random
+import sys
 import matplotlib
 import matplotlib.pyplot as plt
 from collections import namedtuple, deque
@@ -80,8 +81,8 @@ class DQN(nn.Module):
 BATCH_SIZE = 128
 GAMMA = 0.99
 EPS_START = 0.9
-EPS_END = 0.05
-EPS_DECAY = 1000
+EPS_END = 0.1  # originally 0.05
+EPS_DECAY = 10000  # originally 1000
 TAU = 0.005
 LR = 1e-4
 
@@ -216,10 +217,12 @@ try:  # ensures environment closes to not brick the board
             # ~ state, reward, done, _ = env.step(action) from:
             # https://github.com/BlueRiverTech/quanser-openai-driver/blob/main/docs/alternatives.md#usage
             reward = torch.tensor([reward], device=device)
-            done = terminated  # or truncated  # qube base only uses done instead of diff. terminated and truncated
+            # qube base only uses done instead of differentiating between terminated and truncated
+            done = terminated  # or truncated
 
             if terminated:
                 next_state = None
+                print(f"finished after {t + 1} steps with x = {state}")  # print alpha at end of episode
 
             # renderer used in test.py
             if renderer:
@@ -251,10 +254,11 @@ try:  # ensures environment closes to not brick the board
 
         print(f'episode {i_episode + 1} complete')
         plot_durations(show_result=True)
-        plt.ioff()
-        plt.show()
         if i_episode == num_episodes - 1:
             plt.savefig('result.png')
-            print('finished training')
+            print(sys.stdout.buffer, 'finished training')  # TODO: fix this
+        plt.ioff()
+        plt.show()
+
 finally:
     env.close()
