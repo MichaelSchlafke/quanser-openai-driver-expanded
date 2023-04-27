@@ -82,7 +82,7 @@ class QubeSwingupDescActEnv(QubeDiscBaseEnv):
         return done
 
     def reset(self):
-        super(QubeSwingupEnv, self).reset()
+        super(QubeSwingupDescActEnv, self).reset()
         state = self._reset_down()
         return state
 

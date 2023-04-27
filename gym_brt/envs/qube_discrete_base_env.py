@@ -39,7 +39,8 @@ class QubeDiscBaseEnv(gym.Env):
         encoder_reset_steps=int(1e8),
     ):
         self.observation_space = spaces.Box(-OBS_MAX, OBS_MAX)
-        self.action_space = np.array([-ACT_MAX, 0, ACT_MAX])
+        # self.action_space = np.array([-ACT_MAX, 0, ACT_MAX])  # np array doesn't have methods of gym spaces
+        self.action_space = spaces.Discrete(3)
 
         self._frequency = frequency
         # Ensures that samples in episode are the same as batch size
@@ -85,7 +86,9 @@ class QubeDiscBaseEnv(gym.Env):
     def _step(self, action):
         led = self._led()
 
-        action = np.clip(np.array(action, dtype=np.float64), -ACT_MAX, ACT_MAX)
+        # calculation of action value adapted for discrete action space
+        possible_actions = np.array([-MAX_MOTOR_VOLTAGE, 0, MAX_MOTOR_VOLTAGE])
+        action = possible_actions[action]
         state = self.qube.step(action, led=led)
 
         self._dtheta = state[0] - self._theta
@@ -172,7 +175,7 @@ class QubeDiscBaseEnv(gym.Env):
 
 
 # same but through inheritance
-class QubeDiscBaseEnvINH(QubeBaseEnv): # TODO: test this vs QubeDiscBaseEnv
+class QubeDiscBaseEnvINH(QubeBaseEnv):  # TODO: test this vs QubeDiscBaseEnv
     def __init__(
             self,
             frequency=250,
@@ -181,5 +184,5 @@ class QubeDiscBaseEnvINH(QubeBaseEnv): # TODO: test this vs QubeDiscBaseEnv
             encoder_reset_steps=int(1e8),
     ):
         super().__init__()
-        self.action_space = np.array([-ACT_MAX, 0, ACT_MAX])
+        self.action_space = spaces.Discrete(3)
 

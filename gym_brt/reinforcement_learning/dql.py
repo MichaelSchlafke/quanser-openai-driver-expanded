@@ -7,6 +7,7 @@ changed: - the environment to the QubeSwingupEnv
 #import gym_brt.envs.qube_swingup_env as qse
 import gym
 from gym_brt.envs.qube_swingup_env import QubeSwingupEnv
+from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv
 
 #import gymnasium as gym
 import math
@@ -21,7 +22,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-env = QubeSwingupEnv(use_simulator=True)
+env = QubeSwingupDescActEnv(use_simulator=True)
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -193,9 +194,11 @@ def optimize_model():
 
 
 if torch.cuda.is_available():
-    num_episodes = 600
+    num_episodes = 1000
+    print(f"Running on GPU: {torch.cuda.get_device_name()} -> number of episodes: {num_episodes}")
 else:
-    num_episodes = 50
+    num_episodes = 150
+    print(f"Running on CPU -> number of episodes: {num_episodes}")
 
 # render each episode?
 renderer = True
@@ -208,9 +211,12 @@ try:  # ensures environment closes to not brick the board
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
         for t in count():
             action = select_action(state)
-            observation, reward, terminated, truncated, _ = env.step(action.item())
+            # observation, reward, terminated, truncated, _ = env.step(action.item())
+            observation, reward, terminated, _ = env.step(action.item())  # match def of qube base env
+            # ~ state, reward, done, _ = env.step(action) from:
+            # https://github.com/BlueRiverTech/quanser-openai-driver/blob/main/docs/alternatives.md#usage
             reward = torch.tensor([reward], device=device)
-            done = terminated or truncated
+            done = terminated  # or truncated  # qube base only uses done instead of diff. terminated and truncated
 
             if terminated:
                 next_state = None
@@ -219,8 +225,7 @@ try:  # ensures environment closes to not brick the board
             if renderer:
                 env.render()
 
-            else:
-                next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+            next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
 
             # Store the transition in memory
             memory.push(state, action, next_state, reward)
@@ -244,9 +249,12 @@ try:  # ensures environment closes to not brick the board
                 plot_durations()
                 break
 
-        print('Complete')
+        print(f'episode {i_episode + 1} complete')
         plot_durations(show_result=True)
         plt.ioff()
         plt.show()
+        if i_episode == num_episodes - 1:
+            plt.savefig('result.png')
+            print('finished training')
 finally:
     env.close()
