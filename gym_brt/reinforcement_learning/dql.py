@@ -291,7 +291,7 @@ try:  # ensures environment closes to not brick the board
         plt.savefig('rewards.png')
         plt.plot(max_alphas)
         plt.title("Max Alpha")
-        plt.ylabel("Maximum Angle Alpha [rad]")
+        plt.ylabel("Angle [rad]")
         plt.xlabel("Episode")
         plt.show()
         plt.savefig('max_alpha.png')
