@@ -17,11 +17,14 @@ import matplotlib
 import matplotlib.pyplot as plt
 from collections import namedtuple, deque
 from itertools import count
+import argparse
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+
+print(torch.__version__)
 
 env = QubeSwingupDescActEnv(use_simulator=True)
 
@@ -84,7 +87,7 @@ parser = argparse.ArgumentParser()  # sets up argument parsing
 BATCH_SIZE = 128
 GAMMA = 0.99
 EPS_START = 0.9
-EPS_END = 0.1  # originally 0.05
+EPS_END = 0.2  # originally 0.05
 EPS_DECAY = 10000  # originally 1000
 TAU = 0.005
 LR = 1e-4
@@ -101,7 +104,7 @@ parser.add_argument(
 parser.add_argument(
     "-t",
     "--track",
-    default=False,
+    default=True,
     help="toggles tracking simulated states",
 )
 parser.add_argument(
@@ -295,32 +298,32 @@ try:  # ensures environment closes to not brick the board
 
         if track:
             print(f"total reward: {total_reward}")
-            plt.plot(alpha)
-            plt.show()
+            # plt.plot(alpha) # too many simultanius plots
+            # plt.show()
             rewards.append(total_reward)
             max_alphas.append(max(alpha))
 
         print(f'episode {i_episode + 1} complete')
         plot_durations(show_result=True)
-        plt.ioff()
-        plt.show()
         if i_episode == num_episodes - 1:
             plt.savefig('result.png')
             print(sys.stdout.buffer, 'finished training')  # TODO: fix this
             torch.save(policy_net.state_dict(), 'model.pt')
+        plt.ioff()
+        plt.show()
 
     if track:
         plt.plot(rewards)
         plt.title("Rewards")
         plt.xlabel("Episode")
-        plt.show()
         plt.savefig('rewards.png')
+        plt.show()
         plt.plot(max_alphas)
         plt.title("Max Alpha")
         plt.ylabel("Angle [rad]")
         plt.xlabel("Episode")
-        plt.show()
         plt.savefig('max_alpha.png')
+        plt.show()
 
 finally:
     env.close()

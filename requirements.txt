@@ -1,0 +1,7 @@
+scipy~=1.3.1
+gym~=0.14.0
+numpy~=1.17.2
+vpython~=7.5.1
+ipython~=7.8.0
+setuptools~=41.2.0
+matplotlib~=3.5.1
