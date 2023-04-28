@@ -4,12 +4,12 @@ https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 changed: - the environment to the QubeSwingupEnv
 """
 
-#import gym_brt.envs.qube_swingup_env as qse
+# import gym_brt.envs.qube_swingup_env as qse
 import gym
 from gym_brt.envs.qube_swingup_env import QubeSwingupEnv
 from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv
 
-#import gymnasium as gym
+# import gymnasium as gym
 import math
 import random
 import sys
@@ -86,6 +86,11 @@ EPS_DECAY = 10000  # originally 1000
 TAU = 0.005
 LR = 1e-4
 
+# settings
+renderer = True  # render each episode?
+track = True
+load = False
+
 # Get number of actions from gym action space
 n_actions = env.action_space.n  # TODO: ensure compatability with discrete action spaces
 # Get the number of state observations
@@ -94,6 +99,9 @@ n_observations = len(state)
 
 policy_net = DQN(n_observations, n_actions).to(device)
 target_net = DQN(n_observations, n_actions).to(device)
+if load:
+    policy_net.load_state_dict(torch.load('model.pth'))
+    target_net.load_state_dict(torch.load('model.pth'))
 target_net.load_state_dict(policy_net.state_dict())
 
 optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
@@ -201,15 +209,19 @@ else:
     num_episodes = 150
     print(f"Running on CPU -> number of episodes: {num_episodes}")
 
-# render each episode?
-renderer = True
-
-#with QubeSwingupEnv(use_simulator=True) as env:
+# main training loop
+# with QubeSwingupEnv(use_simulator=True) as env:
 try:  # ensures environment closes to not brick the board
+    if track:
+        max_alphas = []
+        rewards = []
     for i_episode in range(num_episodes):
         # Initialize the environment and get it's state
         state = env.reset()
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+        if track:
+            total_reward = 0
+            alpha = []
         for t in count():
             action = select_action(state)
             # observation, reward, terminated, truncated, _ = env.step(action.item())
@@ -227,6 +239,9 @@ try:  # ensures environment closes to not brick the board
             # renderer used in test.py
             if renderer:
                 env.render()
+            if track:
+                total_reward += reward.item()
+                alpha.append(observation[1])
 
             next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
 
@@ -252,13 +267,34 @@ try:  # ensures environment closes to not brick the board
                 plot_durations()
                 break
 
+        if track:
+            print(f"total reward: {total_reward}")
+            plt.plot(alpha)
+            plt.show()
+            rewards.append(total_reward)
+            max_alphas.append(max(alpha))
+
         print(f'episode {i_episode + 1} complete')
         plot_durations(show_result=True)
+        plt.ioff()
+        plt.show()
         if i_episode == num_episodes - 1:
             plt.savefig('result.png')
             print(sys.stdout.buffer, 'finished training')  # TODO: fix this
-        plt.ioff()
+            torch.save(policy_net.state_dict(), 'model.pt')
+
+    if track:
+        plt.plot(rewards)
+        plt.title("Rewards")
+        plt.xlabel("Episode")
         plt.show()
+        plt.savefig('rewards.png')
+        plt.plot(max_alphas)
+        plt.title("Max Alpha")
+        plt.ylabel("Maximum Angle Alpha [rad]")
+        plt.xlabel("Episode")
+        plt.show()
+        plt.savefig('max_alpha.png')
 
 finally:
     env.close()
