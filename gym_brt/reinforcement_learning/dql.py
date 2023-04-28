@@ -71,6 +71,9 @@ class DQN(nn.Module):
         return self.layer3(x)
 
 
+# Hyperparameters
+parser = argparse.ArgumentParser()  # sets up argument parsing
+
 # BATCH_SIZE is the number of transitions sampled from the replay buffer
 # GAMMA is the discount factor as mentioned in the previous section
 # EPS_START is the starting value of epsilon
@@ -87,9 +90,32 @@ TAU = 0.005
 LR = 1e-4
 
 # settings
-renderer = True  # render each episode?
-track = True
-load = False
+
+# parsing of arguments
+parser.add_argument(
+    "-r",
+    "--render",
+    default=False,
+    help="toggles rendering of the simulation",
+)
+parser.add_argument(
+    "-t",
+    "--track",
+    default=False,
+    help="toggles tracking simulated states",
+)
+parser.add_argument(
+    "-l",
+    "--load",
+    default=False,
+    help="toggles loading of a trained model",
+)
+
+args, _ = parser.parse_known_args()
+
+renderer = args.render  # render each episode?
+track = args.track
+load = args.load
 
 # Get number of actions from gym action space
 n_actions = env.action_space.n  # TODO: ensure compatability with discrete action spaces
