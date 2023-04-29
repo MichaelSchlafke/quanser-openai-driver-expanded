@@ -12,7 +12,6 @@ from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv
 # import gymnasium as gym
 import math
 import random
-import sys
 import matplotlib
 import matplotlib.pyplot as plt
 from collections import namedtuple, deque
@@ -23,6 +22,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+
+# quality of life
+from tqdm import tqdm
+
 
 print(torch.__version__)
 
@@ -93,7 +96,7 @@ TAU = 0.005
 LR = 1e-4
 
 # settings
-
+runtime_duration_tracking = False
 # parsing of arguments
 parser.add_argument(
     "-r",
@@ -232,7 +235,7 @@ def optimize_model():
 
 
 if torch.cuda.is_available():
-    num_episodes = 1000
+    num_episodes = 200
     print(f"Running on GPU: {torch.cuda.get_device_name()} -> number of episodes: {num_episodes}")
 else:
     num_episodes = 150
@@ -242,9 +245,9 @@ else:
 # with QubeSwingupEnv(use_simulator=True) as env:
 try:  # ensures environment closes to not brick the board
     if track:
-        max_alphas = []
+        min_alphas = []
         rewards = []
-    for i_episode in range(num_episodes):
+    for i_episode in tqdm(range(num_episodes)):
         # Initialize the environment and get it's state
         state = env.reset()
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
@@ -270,7 +273,7 @@ try:  # ensures environment closes to not brick the board
                 env.render()
             if track:
                 total_reward += reward.item()
-                alpha.append(observation[1])
+                alpha.append(abs(observation[1]))
 
             next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
 
@@ -293,24 +296,26 @@ try:  # ensures environment closes to not brick the board
 
             if done:
                 episode_durations.append(t + 1)
-                plot_durations()
+                # plot_durations()  # only sensible if episode limit is reached
                 break
 
         if track:
             print(f"total reward: {total_reward}")
-            # plt.plot(alpha) # too many simultanius plots
+            # plt.plot(alpha) # too many simultaneous plots
             # plt.show()
             rewards.append(total_reward)
-            max_alphas.append(max(alpha))
+            min_alphas.append(min(alpha))
 
         print(f'episode {i_episode + 1} complete')
-        plot_durations(show_result=True)
-        if i_episode == num_episodes - 1:
-            plt.savefig('result.png')
-            print(sys.stdout.buffer, 'finished training')  # TODO: fix this
-            torch.save(policy_net.state_dict(), 'model.pt')
-        plt.ioff()
-        plt.show()
+        if (i_episode % 100 == 0 or i_episode == num_episodes - 1) and \
+                (runtime_duration_tracking or i_episode == num_episodes - 1):
+            plot_durations(show_result=False)
+            if i_episode == num_episodes - 1:
+                plt.savefig('result.png')
+                print('finished training')
+                torch.save(policy_net.state_dict(), 'model.pt')
+            plt.ioff()
+            plt.show()
 
     if track:
         plt.plot(rewards)
@@ -318,8 +323,8 @@ try:  # ensures environment closes to not brick the board
         plt.xlabel("Episode")
         plt.savefig('rewards.png')
         plt.show()
-        plt.plot(max_alphas)
-        plt.title("Max Alpha")
+        plt.plot(min_alphas)
+        plt.title("Minimum Value of Alpha per Episode")
         plt.ylabel("Angle [rad]")
         plt.xlabel("Episode")
         plt.savefig('max_alpha.png')

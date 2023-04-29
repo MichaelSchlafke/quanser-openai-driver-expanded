@@ -44,6 +44,7 @@ class QubeSwingupStatesSquaredEnv(QubeBaseEnv):
         Reward:
         r(s_t, a_t) = 1 - (0.75 * alpha^2 + 0.15 * theta^2 + 0.05 * alpha_dot^2 + 0.05 * theta_dot^2)
     """
+
     def _reward(self):
         # only modification from QubeSwingupEnv
         alpha_sqrd = np.square(self._alpha / np.pi)
@@ -68,12 +69,22 @@ class QubeSwingupStatesSquaredEnv(QubeBaseEnv):
 
 
 class QubeSwingupDescActEnv(QubeDiscBaseEnv):
+    """"
+        Reward:
+        r(s_t, a_t) = 1 - (0.75 * alpha^2 + 0.15 * theta^2 + 0.05 * alpha_dot^2 + 0.05 * theta_dot^2)
+        with a penalty of -100 if the angle limit of θ ∈ (-π,π) is exceeded
+    """
     def _reward(self):
         reward = 1 - (
                 (0.8 * np.abs(self._alpha) + 0.2 * np.abs(self._target_angle - self._theta))
                 / np.pi
         )
-        return max(reward, 0)  # Clip for the follow env case
+        reward = max(reward, 0)  # Clip for the follow env case
+        # a high penalty for exceeding the angle limit is necessary to prevent the agent from getting stuck in the
+        # local minimum of ending the episode as soon as possible
+        if abs(self._theta) > (90 * np.pi / 180):
+            reward -= 100  # needs to be higher than the maximum reward for the case mentioned above
+        return reward
 
     def _isdone(self):
         done = False
@@ -85,7 +96,6 @@ class QubeSwingupDescActEnv(QubeDiscBaseEnv):
         super(QubeSwingupDescActEnv, self).reset()
         state = self._reset_down()
         return state
-
 
 # Integral doesn't make sense because the reward is not sparse and thus is already taken into account for each step
 

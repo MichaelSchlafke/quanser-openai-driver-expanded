@@ -29,11 +29,12 @@ OBS_MAX = np.asarray([np.pi / 2, np.pi, np.inf, np.inf], dtype=np.float64)
 
 class QubeDiscBaseEnv(gym.Env):
     """A modification of qube_base_env.
-     This class is for discrete action spaces and allows for the actions left, right and no action."""
+     This class is for discrete action spaces and allows for the actions left, right and no action.
+     To compensate the sampling frequency is increased to 1kHz."""
 
     def __init__(
         self,
-        frequency=250,
+        frequency=1000,  # QubeBaseEnv uses 250
         batch_size=2048,
         use_simulator=False,
         encoder_reset_steps=int(1e8),
