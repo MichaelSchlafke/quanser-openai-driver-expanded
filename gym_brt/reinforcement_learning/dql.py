@@ -26,10 +26,65 @@ import torch.nn.functional as F
 # quality of life
 from tqdm import tqdm
 
+print("running torch version: ", torch.__version__)
 
-print(torch.__version__)
+parser = argparse.ArgumentParser()  # sets up argument parsing
 
-env = QubeSwingupDescActEnv(use_simulator=True)
+# Hyperparameters
+# BATCH_SIZE is the number of transitions sampled from the replay buffer
+# GAMMA is the discount factor as mentioned in the previous section
+# EPS_START is the starting value of epsilon
+# EPS_END is the final value of epsilon
+# EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
+# TAU is the update rate of the target network
+# LR is the learning rate of the ``AdamW`` optimizer
+BATCH_SIZE = 128
+GAMMA = 0.99
+EPS_START = 0.9
+EPS_END = 0.2  # originally 0.05
+EPS_DECAY = 10000  # originally 1000
+TAU = 0.005
+LR = 1e-4
+
+# settings
+runtime_duration_tracking = False
+# parsing of arguments
+parser.add_argument(
+    "-r", "--render",
+    default=False, type=bool,
+    help="toggles rendering of the simulation",
+)
+parser.add_argument(
+    "-t", "--track",
+    default=True, type=bool,
+    help="toggles tracking simulated states",
+)
+parser.add_argument(
+    "-l", "--load",
+    default="", type=str,
+    help="if a path is given, the model will be loaded from the given .pt file",
+)
+parser.add_argument(
+    "-e", "--episodes",
+    default=200, type=int,
+    help="number of episodes to train the model for",
+)
+parser.add_argument(
+    "-s", "--simulation",
+    default=True, type=bool,
+    help="toggles between simulation and hardware",
+)
+
+args, _ = parser.parse_known_args()
+
+renderer = args.render  # render each episode?
+track = args.track
+load = args.load != ""
+path = args.load
+num_episodes = args.episodes
+simulation = args.simulation
+
+env = QubeSwingupDescActEnv(use_simulator=simulation)
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -77,52 +132,6 @@ class DQN(nn.Module):
         return self.layer3(x)
 
 
-# Hyperparameters
-parser = argparse.ArgumentParser()  # sets up argument parsing
-
-# BATCH_SIZE is the number of transitions sampled from the replay buffer
-# GAMMA is the discount factor as mentioned in the previous section
-# EPS_START is the starting value of epsilon
-# EPS_END is the final value of epsilon
-# EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
-# TAU is the update rate of the target network
-# LR is the learning rate of the ``AdamW`` optimizer
-BATCH_SIZE = 128
-GAMMA = 0.99
-EPS_START = 0.9
-EPS_END = 0.2  # originally 0.05
-EPS_DECAY = 10000  # originally 1000
-TAU = 0.005
-LR = 1e-4
-
-# settings
-runtime_duration_tracking = False
-# parsing of arguments
-parser.add_argument(
-    "-r",
-    "--render",
-    default=False,
-    help="toggles rendering of the simulation",
-)
-parser.add_argument(
-    "-t",
-    "--track",
-    default=True,
-    help="toggles tracking simulated states",
-)
-parser.add_argument(
-    "-l",
-    "--load",
-    default=False,
-    help="toggles loading of a trained model",
-)
-
-args, _ = parser.parse_known_args()
-
-renderer = args.render  # render each episode?
-track = args.track
-load = args.load
-
 # Get number of actions from gym action space
 n_actions = env.action_space.n  # TODO: ensure compatability with discrete action spaces
 # Get the number of state observations
@@ -132,8 +141,11 @@ n_observations = len(state)
 policy_net = DQN(n_observations, n_actions).to(device)
 target_net = DQN(n_observations, n_actions).to(device)
 if load:
-    policy_net.load_state_dict(torch.load('model.pth'))
-    target_net.load_state_dict(torch.load('model.pth'))
+    try:
+        policy_net.load_state_dict(torch.load(path))
+        target_net.load_state_dict(torch.load(path))
+    except FileNotFoundError:
+        print(f"File not found. Please check your Path: {path}.")
 target_net.load_state_dict(policy_net.state_dict())
 
 optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
@@ -235,20 +247,19 @@ def optimize_model():
 
 
 if torch.cuda.is_available():
-    num_episodes = 200
+    # num_episodes = 200
     print(f"Running on GPU: {torch.cuda.get_device_name()} -> number of episodes: {num_episodes}")
 else:
-    num_episodes = 150
+    num_episodes = min(25, num_episodes)  # prevents unreasonable training times on CPU
     print(f"Running on CPU -> number of episodes: {num_episodes}")
 
 # main training loop
-# with QubeSwingupEnv(use_simulator=True) as env:
 try:  # ensures environment closes to not brick the board
     if track:
         min_alphas = []
         rewards = []
     for i_episode in tqdm(range(num_episodes)):
-        # Initialize the environment and get it's state
+        # initialize the environment and get it's state
         state = env.reset()
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
         if track:
