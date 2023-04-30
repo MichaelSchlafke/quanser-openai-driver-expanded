@@ -317,7 +317,6 @@ try:  # ensures environment closes to not brick the board
             rewards.append(total_reward)
             min_alphas.append(min(alpha))
 
-        print(f'episode {i_episode + 1} complete')
         if (i_episode % 100 == 0 or i_episode == num_episodes - 1) and \
                 (runtime_duration_tracking or i_episode == num_episodes - 1):
             plot_durations(show_result=False)
