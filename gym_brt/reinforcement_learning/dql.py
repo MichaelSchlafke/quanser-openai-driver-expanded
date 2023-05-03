@@ -8,6 +8,7 @@ changed: - the environment to the QubeSwingupEnv
 import gym
 from gym_brt.envs.qube_swingup_env import QubeSwingupEnv
 from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv
+from gym_brt.reinforcement_learning.data_collection import Log
 
 # import gymnasium as gym
 import math
@@ -49,6 +50,7 @@ LR = 1e-4
 # settings
 runtime_duration_tracking = False
 # parsing of arguments
+#TODO add sub arguments for Log
 parser.add_argument(
     "-r", "--render",
     default=False, type=bool,
@@ -74,6 +76,11 @@ parser.add_argument(
     default=True, type=bool,
     help="toggles between simulation and hardware",
 )
+parser.add_argument(
+    "-le", "--learn",
+    default=True, type=bool,
+    help="toggles learning",
+)
 
 args, _ = parser.parse_known_args()
 
@@ -83,6 +90,10 @@ load = args.load != ""
 path = args.load
 num_episodes = args.episodes
 simulation = args.simulation
+learn = args.learn
+
+if track:
+    log = Log()
 
 env = QubeSwingupDescActEnv(use_simulator=simulation)
 
@@ -160,7 +171,7 @@ def select_action(state):
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
                     math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
-    if sample > eps_threshold:
+    if sample > eps_threshold or not learn:
         with torch.no_grad():
             # t.max(1) will return the largest column value of each row.
             # second column on max result is index of where max element was
@@ -291,19 +302,23 @@ try:  # ensures environment closes to not brick the board
             # Store the transition in memory
             memory.push(state, action, next_state, reward)
 
+            if track:
+                log.update(state, action, reward, done)
+
             # Move to the next state
             state = next_state
 
-            # Perform one step of the optimization (on the policy network)
-            optimize_model()
+            if learn:
+                # Perform one step of the optimization (on the policy network)
+                optimize_model()
 
-            # Soft update of the target network's weights
-            # θ′ ← τ θ + (1 −τ )θ′
-            target_net_state_dict = target_net.state_dict()
-            policy_net_state_dict = policy_net.state_dict()
-            for key in policy_net_state_dict:
-                target_net_state_dict[key] = policy_net_state_dict[key] * TAU + target_net_state_dict[key] * (1 - TAU)
-            target_net.load_state_dict(target_net_state_dict)
+                # Soft update of the target network's weights
+                # θ′ ← τ θ + (1 −τ )θ′
+                target_net_state_dict = target_net.state_dict()
+                policy_net_state_dict = policy_net.state_dict()
+                for key in policy_net_state_dict:
+                    target_net_state_dict[key] = policy_net_state_dict[key] * TAU + target_net_state_dict[key] * (1 - TAU)
+                target_net.load_state_dict(target_net_state_dict)
 
             if done:
                 episode_durations.append(t + 1)
@@ -312,13 +327,11 @@ try:  # ensures environment closes to not brick the board
 
         if track:
             print(f"total reward: {total_reward}")
-            # plt.plot(alpha) # too many simultaneous plots
-            # plt.show()
-            rewards.append(total_reward)
-            min_alphas.append(min(alpha))
+            log.calc()
+            # rewards.append(total_reward)
+            # min_alphas.append(min(alpha))
 
-        if (i_episode % 100 == 0 or i_episode == num_episodes - 1) and \
-                (runtime_duration_tracking or i_episode == num_episodes - 1):
+        if i_episode % 100 == 0 or runtime_duration_tracking or i_episode == num_episodes - 1:
             plot_durations(show_result=False)
             if i_episode == num_episodes - 1:
                 plt.savefig('result.png')
@@ -326,19 +339,21 @@ try:  # ensures environment closes to not brick the board
                 torch.save(policy_net.state_dict(), 'model.pt')
             plt.ioff()
             plt.show()
+            log.plot_episode()  # TODO: test
 
     if track:
-        plt.plot(rewards)
-        plt.title("Rewards")
-        plt.xlabel("Episode")
-        plt.savefig('rewards.png')
-        plt.show()
-        plt.plot(min_alphas)
-        plt.title("Minimum Value of Alpha per Episode")
-        plt.ylabel("Angle [rad]")
-        plt.xlabel("Episode")
-        plt.savefig('max_alpha.png')
-        plt.show()
+        log.plot_all()
+        # plt.plot(rewards)
+        # plt.title("Rewards")
+        # plt.xlabel("Episode")
+        # plt.savefig('rewards.png')
+        # plt.show()
+        # plt.plot(min_alphas)
+        # plt.title("Minimum Value of Alpha per Episode")
+        # plt.ylabel("Angle [rad]")
+        # plt.xlabel("Episode")
+        # plt.savefig('max_alpha.png')
+        # plt.show()
 
 finally:
     env.close()

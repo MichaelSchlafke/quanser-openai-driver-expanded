@@ -32,7 +32,7 @@ class Log:
         - episode_log contains the average and max values for each state, the sum of all actions, and whether the episode
             ended due to time constraints or hitting the constraints
     """
-    def __init__(self, save_episodes=False, track_energy=False):
+    def __init__(self, save_episodes=False, track_energy=True):
         self.ended_early = False
         self.save_episodes = save_episodes
         self.track_energy = track_energy
