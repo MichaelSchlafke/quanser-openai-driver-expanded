@@ -5,7 +5,6 @@ import pandas as pd
 import torch
 
 # TODO: TEST
-# TODO: Add energy logging
 # TODO: Add "Einschwingzeit" + "Überschwingen" + "Ausregelzeit" logging
 
 
