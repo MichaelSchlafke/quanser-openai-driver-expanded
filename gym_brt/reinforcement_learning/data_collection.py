@@ -9,6 +9,22 @@ import torch
 # TODO: Add "Einschwingzeit" + "Überschwingen" + "Ausregelzeit" logging
 
 
+def energy(state):  # TODO: TEST
+    """
+    calculates the energy of the system
+    :param state: state of the system
+    :return: kinetic energy, potential energy, total energy
+    """
+    g = 9.81  # acceleration due to gravity in m/s^2
+    # constants taken from the Qube Servo 2 user manual
+    J = 4e-6  # inertia of the pendulum in kg*m^2
+    m_p = 0.024  # mass of the pendulum in kg
+    l = 0.129  # length of the pendulum in m
+    E_kin = 0.5 * J * state[3] ** 2
+    E_pot = m_p * g * l * (1 - np.cos(state[1]))
+    return E_kin, E_pot, E_kin + E_pot
+
+
 class Log:
     """
     Log class for logging data from the environment
@@ -17,9 +33,10 @@ class Log:
         - episode_log contains the average and max values for each state, the sum of all actions, and whether the episode
             ended due to time constraints or hitting the constraints
     """
-    def __init__(self, safe_episodes=False):
+    def __init__(self, save_episodes=False, track_energy=False):
         self.ended_early = False
-        self.safe_episodes = safe_episodes
+        self.save_episodes = save_episodes
+        self.track_energy = track_energy
         self.i = 0
         self.t = 0
         self.rise_time = np.nan
@@ -31,9 +48,13 @@ class Log:
                                                  'sum_action', 'time_up', 'hit constraints', 'successful'])
 
     def update(self, state, action, reward, terminated):
-        self.t += 1
+        self.t += 1  # tracks time
         self.log.append({'theta': state[0], 'alpha': state[1], 'theta_dot': state[2], 'alpha_dot': state[3],
                          'action': action, 'reward': reward}, ignore_index=True)
+        # calculate and save energy over time
+        if self.track_energy:
+            E_kin, E_pot, E_tot = energy(state)
+            self.log.append({'E_kin': E_kin, 'E_pot': E_pot, 'E_tot': E_tot}, ignore_index=True)
         # detect characteristics
         if abs(state[1]) < np.pi * 0.1 and np.isnan(self.rise_time):
             self.rise_time = self.t  # TODO verify
