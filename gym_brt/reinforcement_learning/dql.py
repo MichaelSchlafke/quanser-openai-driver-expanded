@@ -81,6 +81,11 @@ parser.add_argument(
     default=True, type=bool,
     help="toggles learning",
 )
+parser.add_argument(
+    "-se", "--save_episodes",
+    default=False, type=bool,
+    help="toggles saving of episodes as csv",
+)
 
 args, _ = parser.parse_known_args()
 
@@ -91,9 +96,11 @@ path = args.load
 num_episodes = args.episodes
 simulation = args.simulation
 learn = args.learn
+save_episodes = args.save_episodes
+track_energy = track  # replace with own parameter?
 
 if track:
-    log = Log()
+    log = Log(save_episodes=save_episodes, track_energy=track_energy)
 
 env = QubeSwingupDescActEnv(use_simulator=simulation)
 
@@ -303,7 +310,7 @@ try:  # ensures environment closes to not brick the board
             memory.push(state, action, next_state, reward)
 
             if track:
-                log.update(state, action, reward, done)
+                log.update(state, action[0, 0], reward[0], done)
 
             # Move to the next state
             state = next_state
@@ -325,21 +332,25 @@ try:  # ensures environment closes to not brick the board
                 # plot_durations()  # only sensible if episode limit is reached
                 break
 
+        if (i_episode % int(num_episodes/10) == 0 and i_episode != 0) or runtime_duration_tracking or i_episode == num_episodes - 1:
+
+            print("plotting episode...")
+            # plot_durations(show_result=False)  # made redundant by log.plot_episode()
+            if i_episode == num_episodes - 1:
+                # plt.savefig('result.png')
+                print('finished training')
+                torch.save(policy_net.state_dict(), 'model.pt')
+                log.save()
+            # plt.ioff()
+            # plt.show()
+            if track:
+                log.plot_episode()  # TODO: test
+
         if track:
             print(f"total reward: {total_reward}")
             log.calc()
             # rewards.append(total_reward)
             # min_alphas.append(min(alpha))
-
-        if i_episode % 100 == 0 or runtime_duration_tracking or i_episode == num_episodes - 1:
-            plot_durations(show_result=False)
-            if i_episode == num_episodes - 1:
-                plt.savefig('result.png')
-                print('finished training')
-                torch.save(policy_net.state_dict(), 'model.pt')
-            plt.ioff()
-            plt.show()
-            log.plot_episode()  # TODO: test
 
     if track:
         log.plot_all()
