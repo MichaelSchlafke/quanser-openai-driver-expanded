@@ -102,7 +102,7 @@ track_energy = track  # replace with own parameter?
 if track:
     log = Log(save_episodes=save_episodes, track_energy=track_energy)
 
-env = QubeSwingupDescActEnv(use_simulator=simulation)
+env = QubeSwingupDescActEnv(use_simulator=False)
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -160,8 +160,12 @@ policy_net = DQN(n_observations, n_actions).to(device)
 target_net = DQN(n_observations, n_actions).to(device)
 if load:
     try:
-        policy_net.load_state_dict(torch.load(path))
-        target_net.load_state_dict(torch.load(path))
+        if torch.cuda.is_available():  # checks if running on gpu
+            policy_net.load_state_dict(torch.load(path))
+            target_net.load_state_dict(torch.load(path))
+        else:  # ensures that state dict is loaded to cpu
+            policy_net.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
+            target_net.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
     except FileNotFoundError:
         print(f"File not found. Please check your Path: {path}.")
 target_net.load_state_dict(policy_net.state_dict())
@@ -339,7 +343,8 @@ try:  # ensures environment closes to not brick the board
             if i_episode == num_episodes - 1:
                 # plt.savefig('result.png')
                 print('finished training')
-                torch.save(policy_net.state_dict(), 'model.pt')
+                if learn:
+                    torch.save(policy_net.state_dict(), 'model.pt')
                 log.save()
             # plt.ioff()
             # plt.show()

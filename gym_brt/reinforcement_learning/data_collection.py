@@ -1,3 +1,6 @@
+# temp fix for pandas dep. warning:
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 # imports
 import matplotlib.pyplot as plt
 import numpy as np

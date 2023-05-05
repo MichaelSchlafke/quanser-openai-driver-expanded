@@ -63,6 +63,7 @@ class QubeDiscBaseEnv(gym.Env):
                 max_voltage=MAX_MOTOR_VOLTAGE,
             )
         else:
+            print("DEBUG: initializing qube hardware")  # TODO: clean up
             self.qube = QubeHardware(
                 frequency=self._frequency, max_voltage=MAX_MOTOR_VOLTAGE
             )
@@ -85,8 +86,10 @@ class QubeDiscBaseEnv(gym.Env):
         led = self._led()
 
         # calculation of action value adapted for discrete action space
-        possible_actions = np.array([-MAX_MOTOR_VOLTAGE, 0, MAX_MOTOR_VOLTAGE])
-        action = possible_actions[action]
+        possible_actions = np.array([-MAX_MOTOR_VOLTAGE / .9, 0, MAX_MOTOR_VOLTAGE / .9])
+        action = possible_actions[action]  # converts the discrete values of 0 - 3 into left, still, right
+        action = np.clip(np.array(action, dtype=np.float64), -ACT_MAX, ACT_MAX)
+        print(f"debug: action = {action} ") # TODO: clean up
         state = self.qube.step(action, led=led)
 
         self._dtheta = state[0] - self._theta
@@ -99,19 +102,22 @@ class QubeDiscBaseEnv(gym.Env):
         if self._steps_since_encoder_reset >= self._encoder_reset_steps:
             self.qube.reset_encoders()
             self._steps_since_encoder_reset = 0
-        action = np.zeros(shape=self.action_space.shape, dtype=self.action_space.dtype)
+        # action = np.zeros(shape=self.action_space.shape, dtype=self.action_space.dtype)  # TODO: examine
+        action = 1  # 2nd index <-> 0V
         self._step(action)
         return self._get_state()
 
     def _reset_up(self):
         self.qube.reset_up()
-        action = np.zeros(shape=self.action_space.shape, dtype=self.action_space.dtype)
+        # action = np.zeros(shape=self.action_space.shape, dtype=self.action_space.dtype)
+        action = 1  # 2nd index <-> 0V
         self._step(action)
         return self._get_state()
 
     def _reset_down(self):
         self.qube.reset_down()
-        action = np.zeros(shape=self.action_space.shape, dtype=self.action_space.dtype)
+        # action = np.zeros(shape=self.action_space.shape, dtype=self.action_space.dtype)
+        action = 1  # 2nd index <-> 0V
         self._step(action)
         return self._get_state()
 
