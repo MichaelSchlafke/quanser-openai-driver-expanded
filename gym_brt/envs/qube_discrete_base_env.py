@@ -32,7 +32,7 @@ class QubeDiscBaseEnv(gym.Env):
     def __init__(
         self,
         frequency=250,  # more than 250 Hz leads to missed samples due to hardware limitations
-        batch_size=2048,
+        batch_size=4096,  # originaly 2048 -> 8.192 seconds
         use_simulator=False,
         encoder_reset_steps=int(1e8),
     ):
@@ -63,7 +63,7 @@ class QubeDiscBaseEnv(gym.Env):
                 max_voltage=MAX_MOTOR_VOLTAGE,
             )
         else:
-            print("DEBUG: initializing qube hardware")  # TODO: clean up
+            # print("DEBUG: initializing qube hardware")  # TODO: clean up
             self.qube = QubeHardware(
                 frequency=self._frequency, max_voltage=MAX_MOTOR_VOLTAGE
             )
@@ -89,7 +89,7 @@ class QubeDiscBaseEnv(gym.Env):
         possible_actions = np.array([-MAX_MOTOR_VOLTAGE / .9, 0, MAX_MOTOR_VOLTAGE / .9])
         action = possible_actions[action]  # converts the discrete values of 0 - 3 into left, still, right
         action = np.clip(np.array(action, dtype=np.float64), -ACT_MAX, ACT_MAX)
-        print(f"debug: action = {action} ") # TODO: clean up
+        # print(f"debug: action = {action} ") # TODO: clean up
         state = self.qube.step(action, led=led)
 
         self._dtheta = state[0] - self._theta

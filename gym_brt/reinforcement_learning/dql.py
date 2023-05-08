@@ -42,7 +42,7 @@ parser = argparse.ArgumentParser()  # sets up argument parsing
 BATCH_SIZE = 128
 GAMMA = 0.99
 EPS_START = 0.9
-EPS_END = 0.2  # originally 0.05
+EPS_END = 0.1  # originally 0.05
 EPS_DECAY = 10000  # originally 1000
 TAU = 0.005
 LR = 1e-4
@@ -102,7 +102,7 @@ track_energy = track  # replace with own parameter?
 if track:
     log = Log(save_episodes=save_episodes, track_energy=track_energy)
 
-env = QubeSwingupDescActEnv(use_simulator=False)
+env = QubeSwingupDescActEnv(use_simulator=simulation)
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -346,10 +346,15 @@ try:  # ensures environment closes to not brick the board
                 if learn:
                     torch.save(policy_net.state_dict(), 'model.pt')
                 log.save()
+            elif learn:
+                # save backup of net:
+                torch.save(policy_net.state_dict(), f'model_in_e={i_episode}.pt')
             # plt.ioff()
             # plt.show()
             if track:
                 log.plot_episode()  # TODO: test
+
+
 
         if track:
             print(f"total reward: {total_reward}")

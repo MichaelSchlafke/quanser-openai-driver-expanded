@@ -20,11 +20,11 @@ def energy(state):  # TODO: TEST
     """
     g = 9.81  # acceleration due to gravity in m/s^2
     # constants taken from the Qube Servo 2 user manual
-    J = 4e-6  # inertia of the pendulum in kg*m^2
+    J = 4e-6  # inertia of the pendulum in kg*m^2  # TODO correct value is unknown!!!
     m_p = 0.024  # mass of the pendulum in kg
     l = 0.129  # length of the pendulum in m
     E_kin = 0.5 * J * state[3] ** 2
-    E_pot = m_p * g * l * (1 - np.cos(state[1]))
+    E_pot = m_p * g * l * (1 - np.cos(state[1] - np.pi))
     return E_kin, E_pot, E_kin + E_pot
 
 
@@ -89,17 +89,22 @@ class Log:
         """
         self.i += 1
         # calculation
-        if not np.isnan(self.rise_time):  # values only make sense if the pendulum has risen within target range (10%)
-            alphas = self.log['alpha']
-            self.overshoot = np.max(np.absolute(alphas[self.rise_time:]))  # given as a percentage  # TODO verify
-            if np.absolute(alphas[-1]) < 0.05 * np.pi:  # ensures stationary target value reached
-                target_met = np.argwhere(np.absolute(alphas[self.rise_time:]) < 0.05 * np.pi)[0][0]  # TODO verify
-                for index in range(target_met.size):
-                    # traverses array to find the earliest time target value was reached continuously  # TODO test rigerously
-                    if target_met[target_met.size - 1 - index] != target_met[target_met.size - 2 - index] and index > 5:
-                        # TODO is 5 a good value?
-                        self.settling_time = target_met.size - index
-        alpha = self.log['alpha']
+        try:
+            if not np.isnan(self.rise_time):  # values only make sense if the pendulum has risen within target range (10%)
+                alphas = self.log['alpha'].to_numpy()
+                self.overshoot = np.max(np.absolute(alphas[self.rise_time:]))  # given as a percentage  # TODO verify
+                if np.absolute(alphas[-1]) < 0.05 * np.pi:  # ensures stationary target value reached
+                    target_met = np.argwhere(np.absolute(alphas[self.rise_time:]) < 0.05 * np.pi)[0][0]  # TODO verify
+                    for index in range(target_met.size):
+                        # traverses array to find the earliest time target value was reached continuously  # TODO test rigerously
+                        if target_met[target_met.size - 1 - index] != target_met[target_met.size - 2 - index] and index > 5:
+                            # TODO is 5 a good value?
+                            self.settling_time = target_met.size - index
+        except:  # TODO: improve
+            self.overshoot = np.nan
+            self.settling_time = np.nan
+            print("calculation of overshoot and settling time failed critically!")
+        alpha = self.log['alpha'].to_numpy()
         time_up = (np.pi/2. > np.absolute(alpha)).sum()  # TODO verify
         successfull = np.pi/2. > np.absolute(np.max(alpha)) # TODO verify
         self.episode_log = self.episode_log.append({'avg_theta': np.mean(self.log['theta']), 'avg_alpha': np.mean(self.log['alpha']),
@@ -110,7 +115,7 @@ class Log:
                                     'max_alpha_dot': np.max(self.log['alpha_dot']),
                                     'sum_action': np.sum(self.log['action']),
                                     'time_up': time_up,
-                                    'hit constraints': self.ended_early,  # TODO verify
+                                    'hit constraints': self.ended_early,  # TODO FIX THIS, ALWAYS TRUE!
                                     'reward': self.log['reward'].sum(),
                                     'successful': successfull,
                                     'rise_time': self.rise_time,
@@ -163,34 +168,44 @@ class Log:
         # histograms
         plt.hist(self.episode_log['avg_theta'])
         plt.title('avg_theta')
+        plt.figure(1)
         plt.show()
         plt.hist(self.episode_log['avg_alpha'])
         plt.title('avg_alpha')
+        plt.figure(2)
         plt.show()
         plt.hist(self.episode_log['avg_theta_dot'])
         plt.title('avg_theta_dot')
+        plt.figure(3)
         plt.show()
         plt.hist(self.episode_log['avg_alpha_dot'])
         plt.title('avg_alpha_dot')
+        plt.figure(4)
         plt.show()
         plt.hist(self.episode_log['max_theta'])
         plt.title('max_theta')
+        plt.figure(5)
         plt.show()
         plt.hist(self.episode_log['max_alpha'])
         plt.title('max_alpha')
+        plt.figure(6)
         plt.show()
         plt.hist(self.episode_log['max_theta_dot'])
         plt.title('max_theta_dot')
+        plt.figure(7)
         plt.show()
         plt.hist(self.episode_log['max_alpha_dot'])
         plt.title('max_alpha_dot')
+        plt.figure(8)
         plt.show()
         plt.hist(self.episode_log['sum_action'])
         plt.title('sum_action')
+        plt.figure(9)
         plt.show()
         # if self.episode_log['time_up'].nonzero()[0].size > 0:
         plt.hist(self.episode_log['time_up'])
         plt.title('time_up')
+        plt.figure(10)
         plt.show()
         # TODO: handle NaN values properly
         # if np.isfinite(self.episode_log['overshoot'].to_numpy()):
@@ -207,7 +222,9 @@ class Log:
         number_hit_constraints = self.episode_log['hit constraints'].sum()
         plt.bar(['successful', 'hit constraints'], [number_successful, number_hit_constraints])
         plt.title('success rates')
+        plt.figure(11)
         plt.show()
+        print("finished plotting")
         # TODO save figs
 
     def save(self):
