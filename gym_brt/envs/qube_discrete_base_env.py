@@ -31,7 +31,7 @@ class QubeDiscBaseEnv(gym.Env):
 
     def __init__(
         self,
-        frequency=1000,
+        frequency=250,  # more than 250 Hz leads to missed samples due to hardware limitations
         batch_size=2048,
         use_simulator=False,
         encoder_reset_steps=int(1e8),
