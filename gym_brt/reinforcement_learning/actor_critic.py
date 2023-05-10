@@ -9,12 +9,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
+# custom classes
+from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv
+from gym_brt.reinforcement_learning.data_collection import Log
 
-# Cart Pole
 
 # settings
 runtime_duration_tracking = False
+# in cartpole this equates to the number if frames the pole has to be raised for the task to be completed
+# with cube base environment, this is not applicable as the reward is not sparse
+reward_threshold = 5000  # TODO: find and verify sensible value, maybe replace altogether?
 # parsing of arguments
+parser = argparse.ArgumentParser(description='PyTorch actor-critic')
 #TODO add sub arguments for Log
 parser.add_argument(
     "-r", "--render",
@@ -29,8 +35,6 @@ parser.add_argument(
     '--seed', type=int, default=543, metavar='N',
     help='random seed (default: 543)'
 )
-parser.add_argument('--log-interval', type=int, default=10, metavar='N',
-                    help='interval between training status logs (default: 10)')
 parser.add_argument(
     "-t", "--track",
     default=True, type=bool,
@@ -83,7 +87,8 @@ if track:
 
 # set up environment
 env = QubeSwingupDescActEnv(use_simulator=simulation)
-env.reset(seed=args.seed)  # TODO: keep or remove?
+# env.reset(seed=args.seed)  # TODO: keep or remove?
+env.reset()
 torch.manual_seed(args.seed)
 
 
@@ -128,6 +133,11 @@ class Policy(nn.Module):
 
 
 model = Policy()
+if path != "":
+    try:
+        model.load_state_dict(torch.load(path))
+    except FileNotFoundError:
+        print("File not found. Training new model.")
 optimizer = optim.Adam(model.parameters(), lr=3e-2)
 eps = np.finfo(np.float32).eps.item()
 
@@ -199,7 +209,7 @@ def main():
     for i_episode in count(1):
 
         # reset environment and episode reward
-        state, _ = env.reset()
+        state = env.reset()
         ep_reward = 0
 
         # for each episode, only run 9999 steps so that we don't
@@ -210,7 +220,7 @@ def main():
             action = select_action(state)
 
             # take the action
-            state, reward, done, _, _ = env.step(action)
+            state, reward, done, _ = env.step(action)
 
             if args.render:
                 env.render()
@@ -231,8 +241,11 @@ def main():
             print('Episode {}\tLast reward: {:.2f}\tAverage reward: {:.2f}'.format(
                   i_episode, ep_reward, running_reward))
 
+        if i_episode % 100 == 0:
+            torch.save(model.state_dict(), f'trained_models/actor-critic_e={i_episode}.pt')
+
         # check if we have "solved" the cart pole problem
-        if running_reward > env.spec.reward_threshold:
+        if running_reward > reward_threshold:
             print("Solved! Running reward is now {} and "
                   "the last episode runs to {} time steps!".format(running_reward, t))
             break
