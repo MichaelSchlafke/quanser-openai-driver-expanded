@@ -203,6 +203,8 @@ def finish_episode():
 
 
 def main():
+    # tracking best reward to continuously save the best model as a countermeasure to catastrophic forgetting
+    top_reward = 0
     running_reward = 10
 
     # run infinitely many episodes
@@ -243,6 +245,9 @@ def main():
 
         if i_episode % 100 == 0:
             torch.save(model.state_dict(), f'trained_models/actor-critic_e={i_episode}.pt')
+        elif ep_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
+            top_reward = ep_reward
+            torch.save(model.state_dict(), f'trained_models/actor-critic_best_performance.pt')
 
         # check if we have "solved" the cart pole problem
         if running_reward > reward_threshold:

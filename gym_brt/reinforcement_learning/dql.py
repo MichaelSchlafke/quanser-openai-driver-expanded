@@ -175,6 +175,9 @@ memory = ReplayMemory(10000)
 
 steps_done = 0
 
+# tracking best reward to continuously save the best model as a countermeasure to catastrophic forgetting
+top_reward = 0
+
 
 def select_action(state):
     global steps_done
@@ -344,18 +347,19 @@ try:  # ensures environment closes to not brick the board
                 # plt.savefig('result.png')
                 print('finished training')
                 if learn:
-                    torch.save(policy_net.state_dict(), 'model.pt')
+                    torch.save(policy_net.state_dict(), 'trained_models/model.pt')
                 log.save()
             elif learn:
                 # save backup of net:
-                torch.save(policy_net.state_dict(), f'model_in_e={i_episode}.pt')
+                torch.save(policy_net.state_dict(), f'trained_models/model_in_e={i_episode}.pt')
             # plt.ioff()
             # plt.show()
             if track:
                 log.plot_episode()  # TODO: test
 
-
-
+        if total_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
+            top_reward = total_reward
+            torch.save(policy_net.state_dict(), f'trained_models/dql_best_performance.pt')
         if track:
             print(f"total reward: {total_reward}")
             log.calc()
