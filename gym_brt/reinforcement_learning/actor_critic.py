@@ -52,7 +52,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "-s", "--simulation",
-    default=True, type=bool,
+    default=False, type=bool,
     help="toggles between simulation and hardware",
 )
 parser.add_argument(
@@ -78,6 +78,7 @@ load = args.load != ""
 path = args.load
 num_episodes = args.episodes
 simulation = args.simulation
+simulation = False
 learn = args.learn
 save_episodes = args.save_episodes
 track_energy = track  # replace with own parameter?
@@ -203,58 +204,60 @@ def finish_episode():
 
 
 def main():
-    # tracking best reward to continuously save the best model as a countermeasure to catastrophic forgetting
-    top_reward = 0
-    running_reward = 10
+    try:
+        # tracking best reward to continuously save the best model as a countermeasure to catastrophic forgetting
+        top_reward = 0
+        running_reward = 10
 
-    # run infinitely many episodes
-    for i_episode in count(1):
+        # run infinitely many episodes
+        for i_episode in count(1):
 
-        # reset environment and episode reward
-        state = env.reset()
-        ep_reward = 0
+            # reset environment and episode reward
+            state = env.reset()
+            ep_reward = 0
 
-        # for each episode, only run 9999 steps so that we don't
-        # infinite loop while learning
-        for t in range(1, 10000):
+            # for each episode, only run 9999 steps so that we don't
+            # infinite loop while learning
+            for t in range(1, 10000):
 
-            # select action from policy
-            action = select_action(state)
+                # select action from policy
+                action = select_action(state)
 
-            # take the action
-            state, reward, done, _ = env.step(action)
+                # take the action
+                state, reward, done, _ = env.step(action)
 
-            if args.render:
-                env.render()
+                if args.render:
+                    env.render()
 
-            model.rewards.append(reward)
-            ep_reward += reward
-            if done:
+                model.rewards.append(reward)
+                ep_reward += reward
+                if done:
+                    break
+
+            # update cumulative reward
+            running_reward = 0.05 * ep_reward + (1 - 0.05) * running_reward
+
+            # perform backprop
+            finish_episode()
+
+            # log results
+            if i_episode % args.log_interval == 0:
+                print('Episode {}\tLast reward: {:.2f}\tAverage reward: {:.2f}'.format(
+                      i_episode, ep_reward, running_reward))
+
+            if i_episode % 100 == 0:
+                torch.save(model.state_dict(), f'trained_models/actor-critic_e={i_episode}.pt')
+            elif ep_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
+                top_reward = ep_reward
+                torch.save(model.state_dict(), f'trained_models/actor-critic_best_performance.pt')
+
+            # check if we have "solved" the cart pole problem
+            if running_reward > reward_threshold:
+                print("Solved! Running reward is now {} and "
+                      "the last episode runs to {} time steps!".format(running_reward, t))
                 break
-
-        # update cumulative reward
-        running_reward = 0.05 * ep_reward + (1 - 0.05) * running_reward
-
-        # perform backprop
-        finish_episode()
-
-        # log results
-        if i_episode % args.log_interval == 0:
-            print('Episode {}\tLast reward: {:.2f}\tAverage reward: {:.2f}'.format(
-                  i_episode, ep_reward, running_reward))
-
-        if i_episode % 100 == 0:
-            torch.save(model.state_dict(), f'trained_models/actor-critic_e={i_episode}.pt')
-        elif ep_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
-            top_reward = ep_reward
-            torch.save(model.state_dict(), f'trained_models/actor-critic_best_performance.pt')
-
-        # check if we have "solved" the cart pole problem
-        if running_reward > reward_threshold:
-            print("Solved! Running reward is now {} and "
-                  "the last episode runs to {} time steps!".format(running_reward, t))
-            break
-
+    finally:
+        env.close()
 
 if __name__ == '__main__':
     main()

@@ -106,10 +106,11 @@ class Log:
             print("calculation of overshoot and settling time failed critically!")
         alpha = self.log['alpha'].to_numpy()
         time_up = (np.pi/2. > np.absolute(alpha)).sum()  # TODO verify
-        successfull = np.pi/2. > np.absolute(np.max(alpha)) # TODO verify
+        successfull = np.pi/2. > np.absolute(np.min(alpha)) # TODO verify
         self.episode_log = self.episode_log.append({'avg_theta': np.mean(self.log['theta']), 'avg_alpha': np.mean(self.log['alpha']),
                                     'avg_theta_dot': np.mean(self.log['theta_dot']),
                                     'avg_alpha_dot': np.mean(self.log['alpha_dot']),
+                                    'min_alpha': np.absolute(np.min(alpha)),
                                     'max_theta': np.max(self.log['theta']), 'max_alpha': np.max(self.log['alpha']),
                                     'max_theta_dot': np.max(self.log['theta_dot']),
                                     'max_alpha_dot': np.max(self.log['alpha_dot']),

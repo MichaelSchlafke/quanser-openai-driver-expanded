@@ -10,6 +10,7 @@ import torch.optim as optim
 from torch.distributions import Categorical
 # custom classes
 from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv
+from gym_brt.envs.qube_swingup_custom_env import QubeSwingupStatesSquaredEnv
 from gym_brt.reinforcement_learning.data_collection import Log
 
 
@@ -76,6 +77,7 @@ load = args.load != ""
 path = args.load
 num_episodes = args.episodes
 simulation = args.simulation
+simulation = False
 learn = args.learn
 save_episodes = args.save_episodes
 track_energy = track  # replace with own parameter?
@@ -83,7 +85,8 @@ track_energy = track  # replace with own parameter?
 if track:
     log = Log(save_episodes=save_episodes, track_energy=track_energy)
 
-env = QubeSwingupDescActEnv(use_simulator=simulation)
+# env = QubeSwingupDescActEnv(use_simulator=simulation)
+env = QubeSwingupStatesSquaredEnv()
 
 # env.reset(seed=args.seed)  # TODO: keep or remove?
 env.reset()
@@ -93,16 +96,16 @@ torch.manual_seed(args.seed)
 class Policy(nn.Module):
     def __init__(self):
         super(Policy, self).__init__()
-        self.affine1 = nn.Linear(4, 512)
+        self.affine1 = nn.Linear(4, 256)
         self.dropout = nn.Dropout(p=0.6)
-        self.affine2 = nn.Linear(512, 3)
+        self.affine2 = nn.Linear(256, 3)
 
         self.saved_log_probs = []
         self.rewards = []
 
     def forward(self, x):
         x = self.affine1(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
         x = F.relu(x)
         action_scores = self.affine2(x)
         return F.softmax(action_scores, dim=1)
@@ -147,37 +150,39 @@ def finish_episode():
 
 
 def main():
-    # tracking best reward to continuously save the best model as a countermeasure to catastrophic forgetting
-    top_reward = 0
-    running_reward = 10
-    for i_episode in count(1):
-        state = env.reset()
-        ep_reward = 0
-        for t in range(1, 10000):  # Don't infinite loop while learning
-            action = select_action(state)
-            state, reward, done, _ = env.step(action)
-            policy.rewards.append(reward)
-            ep_reward += reward
-            if renderer:
-                env.render()
-            if done:
+    try:
+        # tracking best reward to continuously save the best model as a countermeasure to catastrophic forgetting
+        top_reward = 0
+        running_reward = 10
+        for i_episode in count(1):
+            state = env.reset()
+            ep_reward = 0
+            for t in range(1, 10000):  # Don't infinite loop while learning
+                action = select_action(state)
+                state, reward, done, _ = env.step(action)
+                policy.rewards.append(reward)
+                ep_reward += reward
+                if renderer:
+                    env.render()
+                if done:
+                    break
+
+            running_reward = 0.05 * ep_reward + (1 - 0.05) * running_reward
+            finish_episode()
+            if i_episode % args.log_interval == 0:
+                print('Episode {}\tLast reward: {:.2f}\tAverage reward: {:.2f}'.format(
+                      i_episode, ep_reward, running_reward))
+            if i_episode % 100 == 0:
+                torch.save(policy.state_dict(), f'trained_models/reinforce_e={i_episode}.pt')
+            elif ep_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
+                top_reward = ep_reward
+                torch.save(policy.state_dict(), f'trained_models/reinforce_best_performance.pt')
+            if running_reward > reward_threshold:
+                print("Solved! Running reward is now {} and "
+                      "the last episode runs to {} time steps!".format(running_reward, t))
                 break
-
-        running_reward = 0.05 * ep_reward + (1 - 0.05) * running_reward
-        finish_episode()
-        if i_episode % args.log_interval == 0:
-            print('Episode {}\tLast reward: {:.2f}\tAverage reward: {:.2f}'.format(
-                  i_episode, ep_reward, running_reward))
-        if i_episode % 100 == 0:
-            torch.save(policy.state_dict(), f'trained_models/reinforce_e={i_episode}.pt')
-        elif ep_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
-            top_reward = ep_reward
-            torch.save(policy.state_dict(), f'trained_models/resolve_best_performance.pt')
-        if running_reward > reward_threshold:
-            print("Solved! Running reward is now {} and "
-                  "the last episode runs to {} time steps!".format(running_reward, t))
-            break
-
+    finally:
+        env.close()
 
 if __name__ == '__main__':
     main()

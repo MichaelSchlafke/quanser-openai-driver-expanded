@@ -8,7 +8,12 @@ changed: - the environment to the QubeSwingupEnv
 import gym
 from gym_brt.envs.qube_swingup_env import QubeSwingupEnv
 from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv
+from gym_brt.envs.qube_swingup_custom_env import QubeBalanceDiscEnv
 from gym_brt.reinforcement_learning.data_collection import Log
+
+# multicore handling of hardware
+from MotorProcess import MotorProcess
+from multiprocessing import Process
 
 # import gymnasium as gym
 import math
@@ -98,11 +103,16 @@ simulation = args.simulation
 learn = args.learn
 save_episodes = args.save_episodes
 track_energy = track  # replace with own parameter?
+# manual overwrite
+simulation = False
+renderer = False
+num_episodes = 1000
 
 if track:
     log = Log(save_episodes=save_episodes, track_energy=track_energy)
 
-env = QubeSwingupDescActEnv(use_simulator=simulation)
+# env = QubeSwingupDescActEnv(use_simulator=simulation)  # swing up with discrete actions and basic rewards
+env = QubeBalanceDiscEnv()
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -133,14 +143,15 @@ class ReplayMemory(object):
     def __len__(self):
         return len(self.memory)
 
+nn_width = 128  # 256
 
 class DQN(nn.Module):
 
     def __init__(self, n_observations, n_actions):
         super(DQN, self).__init__()
-        self.layer1 = nn.Linear(n_observations, 512)
-        self.layer2 = nn.Linear(512, 512)
-        self.layer3 = nn.Linear(512, n_actions)
+        self.layer1 = nn.Linear(n_observations, nn_width)
+        self.layer2 = nn.Linear(nn_width, nn_width)
+        self.layer3 = nn.Linear(nn_width, n_actions)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
@@ -174,9 +185,6 @@ optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 memory = ReplayMemory(10000)
 
 steps_done = 0
-
-# tracking best reward to continuously save the best model as a countermeasure to catastrophic forgetting
-top_reward = 0
 
 
 def select_action(state):
@@ -275,7 +283,6 @@ if torch.cuda.is_available():
     # num_episodes = 200
     print(f"Running on GPU: {torch.cuda.get_device_name()} -> number of episodes: {num_episodes}")
 else:
-    num_episodes = min(25, num_episodes)  # prevents unreasonable training times on CPU
     print(f"Running on CPU -> number of episodes: {num_episodes}")
 
 # main training loop
@@ -347,19 +354,18 @@ try:  # ensures environment closes to not brick the board
                 # plt.savefig('result.png')
                 print('finished training')
                 if learn:
-                    torch.save(policy_net.state_dict(), 'trained_models/model.pt')
+                    torch.save(policy_net.state_dict(), 'model.pt')
                 log.save()
             elif learn:
                 # save backup of net:
-                torch.save(policy_net.state_dict(), f'trained_models/model_in_e={i_episode}.pt')
+                torch.save(policy_net.state_dict(), f'model_in_e={i_episode}.pt')
             # plt.ioff()
             # plt.show()
             if track:
                 log.plot_episode()  # TODO: test
 
-        if total_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
-            top_reward = total_reward
-            torch.save(policy_net.state_dict(), f'trained_models/dql_best_performance.pt')
+
+
         if track:
             print(f"total reward: {total_reward}")
             log.calc()

@@ -39,7 +39,7 @@ from gym_brt.envs.qube_discrete_base_env import QubeDiscBaseEnv
 """
 
 
-class QubeSwingupStatesSquaredEnv(QubeBaseEnv):
+class QubeSwingupStatesSquaredEnv(QubeDiscBaseEnv):  # changed to discrete -> TODO: clean up
     """"
         Reward:
         r(s_t, a_t) = 1 - (0.75 * alpha^2 + 0.15 * theta^2 + 0.05 * alpha_dot^2 + 0.05 * theta_dot^2)
@@ -82,8 +82,8 @@ class QubeSwingupDescActEnv(QubeDiscBaseEnv):
         reward = max(reward, 0)  # Clip for the follow env case
         # a high penalty for exceeding the angle limit is necessary to prevent the agent from getting stuck in the
         # local minimum of ending the episode as soon as possible
-        if abs(self._theta) > (90 * np.pi / 180):
-            reward -= 100  # needs to be higher than the maximum reward for the case mentioned above
+        # if abs(self._theta) > (90 * np.pi / 180):  # TODO: further experiments to examine veracity
+        #     reward -= 100  # needs to be higher than the maximum reward for the case mentioned above
         return reward
 
     def _isdone(self):
@@ -95,6 +95,27 @@ class QubeSwingupDescActEnv(QubeDiscBaseEnv):
     def reset(self):
         super(QubeSwingupDescActEnv, self).reset()
         state = self._reset_down()
+        return state
+
+class QubeBalanceDiscEnv(QubeDiscBaseEnv):
+    def _reward(self):
+        reward = 1 - (
+            (0.8 * np.abs(self._alpha) + 0.2 * np.abs(self._target_angle - self._theta))
+            / np.pi
+        )
+        return max(reward, 0)  # Clip for the follow env case
+
+    def _isdone(self):
+        done = False
+        done |= self._episode_steps >= self._max_episode_steps
+        done |= abs(self._theta) > (90 * np.pi / 180)
+        done |= abs(self._alpha) > (20 * np.pi / 180)
+        return done
+
+    def reset(self):
+        super(QubeBalanceDiscEnv, self).reset()
+        # Start the pendulum stationary at the top (stable point)
+        state = self._reset_up()
         return state
 
 # Integral doesn't make sense because the reward is not sparse and thus is already taken into account for each step
