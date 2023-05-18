@@ -44,13 +44,13 @@ GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.1  # originally 0.05
 EPS_DECAY = 10000  # originally 1000
-TAU = 0.005
+TAU = 0.005 # for soft update of target parameters
 LR = 1e-4
 
 # settings
 runtime_duration_tracking = False
 # parsing of arguments
-#TODO add sub arguments for Log
+# TODO add sub arguments for Log
 parser.add_argument(
     "-r", "--render",
     default=False, type=bool,
@@ -271,114 +271,108 @@ def optimize_model():
     optimizer.step()
 
 
-if torch.cuda.is_available():
-    # num_episodes = 200
-    print(f"Running on GPU: {torch.cuda.get_device_name()} -> number of episodes: {num_episodes}")
-else:
-    num_episodes = min(25, num_episodes)  # prevents unreasonable training times on CPU
-    print(f"Running on CPU -> number of episodes: {num_episodes}")
+def train():
+    if torch.cuda.is_available():
+        print(f"Running on GPU: {torch.cuda.get_device_name()}, number of episodes: {num_episodes}")
+    else:
+        print(f"Running on CPU, number of episodes: {num_episodes}")
 
-# main training loop
-try:  # ensures environment closes to not brick the board
-    if track:
-        min_alphas = []
-        rewards = []
-    for i_episode in tqdm(range(num_episodes)):
-        # initialize the environment and get it's state
-        state = env.reset()
-        state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+    # main training loop
+    try:  # ensures environment closes to not brick the board
         if track:
-            total_reward = 0
-            alpha = []
-        for t in count():
-            action = select_action(state)
-            # observation, reward, terminated, truncated, _ = env.step(action.item())
-            observation, reward, terminated, _ = env.step(action.item())  # match def of qube base env
-            # ~ state, reward, done, _ = env.step(action) from:
-            # https://github.com/BlueRiverTech/quanser-openai-driver/blob/main/docs/alternatives.md#usage
-            reward = torch.tensor([reward], device=device)
-            # qube base only uses done instead of differentiating between terminated and truncated
-            done = terminated  # or truncated
-
-            if terminated:
-                next_state = None
-                print(f"finished after {t + 1} steps with x = {state}")  # print alpha at end of episode
-
-            # renderer used in test.py
-            if renderer:
-                env.render()
+            min_alphas = []
+            rewards = []
+        for i_episode in tqdm(range(num_episodes)):
+            # initialize the environment and get it's state
+            state = env.reset()
+            state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
             if track:
-                total_reward += reward.item()
-                alpha.append(abs(observation[1]))
+                total_reward = 0
+                alpha = []
+            for t in count():
+                action = select_action(state)
+                # observation, reward, terminated, truncated, _ = env.step(action.item())
+                observation, reward, terminated, _ = env.step(action.item())  # match def of qube base env
+                # ~ state, reward, done, _ = env.step(action) from:
+                # https://github.com/BlueRiverTech/quanser-openai-driver/blob/main/docs/alternatives.md#usage
+                reward = torch.tensor([reward], device=device)
+                # qube base only uses done instead of differentiating between terminated and truncated
+                done = terminated  # or truncated
 
-            next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+                if terminated:
+                    next_state = None
+                    print(f"finished after {t + 1} steps with x = {state}")  # print alpha at end of episode
 
-            # Store the transition in memory
-            memory.push(state, action, next_state, reward)
+                # renderer used in test.py
+                if renderer:
+                    env.render()
+                if track:
+                    total_reward += reward.item()
+                    alpha.append(abs(observation[1]))
 
-            if track:
-                log.update(state, action[0, 0], reward[0], done)
+                next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
 
-            # Move to the next state
-            state = next_state
+                # Store the transition in memory
+                memory.push(state, action, next_state, reward)
 
-            if learn:
-                # Perform one step of the optimization (on the policy network)
-                optimize_model()
+                if track:
+                    log.update(state, action[0, 0], reward[0], done)
 
-                # Soft update of the target network's weights
-                # θ′ ← τ θ + (1 −τ )θ′
-                target_net_state_dict = target_net.state_dict()
-                policy_net_state_dict = policy_net.state_dict()
-                for key in policy_net_state_dict:
-                    target_net_state_dict[key] = policy_net_state_dict[key] * TAU + target_net_state_dict[key] * (1 - TAU)
-                target_net.load_state_dict(target_net_state_dict)
+                # Move to the next state
+                state = next_state
 
-            if done:
-                episode_durations.append(t + 1)
-                # plot_durations()  # only sensible if episode limit is reached
-                break
-
-        if (i_episode % int(num_episodes/10) == 0 and i_episode != 0) or runtime_duration_tracking or i_episode == num_episodes - 1:
-
-            print("plotting episode...")
-            # plot_durations(show_result=False)  # made redundant by log.plot_episode()
-            if i_episode == num_episodes - 1:
-                # plt.savefig('result.png')
-                print('finished training')
                 if learn:
-                    torch.save(policy_net.state_dict(), 'trained_models/model.pt')
-                log.save()
-            elif learn:
-                # save backup of net:
-                torch.save(policy_net.state_dict(), f'trained_models/model_in_e={i_episode}.pt')
-            # plt.ioff()
-            # plt.show()
+                    # Perform one step of the optimization (on the policy network)
+                    optimize_model()
+
+                    # Soft update of the target network's weights
+                    # θ′ ← τ θ + (1 −τ )θ′
+                    target_net_state_dict = target_net.state_dict()
+                    policy_net_state_dict = policy_net.state_dict()
+                    for key in policy_net_state_dict:
+                        target_net_state_dict[key] = policy_net_state_dict[key] * TAU + target_net_state_dict[key] * (
+                                    1 - TAU)
+                    target_net.load_state_dict(target_net_state_dict)
+
+                if done:
+                    episode_durations.append(t + 1)
+                    # plot_durations()  # only sensible if episode limit is reached
+                    break
+
+            if (i_episode % int(
+                    num_episodes / 10) == 0 and i_episode != 0) or runtime_duration_tracking or i_episode == num_episodes - 1:
+
+                print("plotting episode...")
+                # plot_durations(show_result=False)  # made redundant by log.plot_episode()
+                if i_episode == num_episodes - 1:
+                    # plt.savefig('result.png')
+                    print('finished training')
+                    if learn:
+                        torch.save(policy_net.state_dict(), 'trained_models/model.pt')
+                    log.save()
+                elif learn:
+                    # save backup of net:
+                    torch.save(policy_net.state_dict(), f'trained_models/model_in_e={i_episode}.pt')
+                # plt.ioff()
+                # plt.show()
+                if track:
+                    log.plot_episode()  # TODO: test
+
+            if total_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
+                top_reward = total_reward
+                torch.save(policy_net.state_dict(), f'trained_models/dql_best_performance.pt')
             if track:
-                log.plot_episode()  # TODO: test
+                print(f"total reward: {total_reward}")
+                log.calc()
+                # rewards.append(total_reward)
+                # min_alphas.append(min(alpha))
 
-        if total_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
-            top_reward = total_reward
-            torch.save(policy_net.state_dict(), f'trained_models/dql_best_performance.pt')
         if track:
-            print(f"total reward: {total_reward}")
-            log.calc()
-            # rewards.append(total_reward)
-            # min_alphas.append(min(alpha))
+            log.plot_all()
 
-    if track:
-        log.plot_all()
-        # plt.plot(rewards)
-        # plt.title("Rewards")
-        # plt.xlabel("Episode")
-        # plt.savefig('rewards.png')
-        # plt.show()
-        # plt.plot(min_alphas)
-        # plt.title("Minimum Value of Alpha per Episode")
-        # plt.ylabel("Angle [rad]")
-        # plt.xlabel("Episode")
-        # plt.savefig('max_alpha.png')
-        # plt.show()
+    finally:
+        env.close()
 
-finally:
-    env.close()
+
+if __name__ == '__main__':
+    train()

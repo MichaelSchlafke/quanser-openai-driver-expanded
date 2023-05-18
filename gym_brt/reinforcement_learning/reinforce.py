@@ -146,7 +146,7 @@ def finish_episode():
     del policy.saved_log_probs[:]
 
 
-def main():
+def train():
     # tracking best reward to continuously save the best model as a countermeasure to catastrophic forgetting
     top_reward = 0
     running_reward = 10
@@ -180,4 +180,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    train()
