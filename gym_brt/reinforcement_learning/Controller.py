@@ -1,12 +1,12 @@
 import multiprocessing
 import numpy as np
 import time
-import Controller_NLP
+
 from multiprocessing import Process
-from Controller_NLP import Controller
+
 from MotorProcess import MotorProcess
-from PlotProcess import PlotProcess
-from my_qube_interface import QubeHardware
+# from PlotProcess import PlotProcess  # todo: not implemented yet
+# from my_qube_interface import QubeHardware  # todo: required for control loop???
 # import dql
 # import reinforce as rf
 # import actor_critic as ac
@@ -24,7 +24,7 @@ def control():
                         , help='choose the algorithm to train the agent with',
                         choices=['dql', 'reinforce', 'actor_critic'])
     arg = parser.parse_args()
-    training_loops = {'dql': rl.dql(), 'reinforce': rl.reinforce(), 'actor_critic': rl.actor_critic()}
+    training_loops = {'dql': rl.dql, 'reinforce': rl.reinforce, 'actor_critic': rl.actor_critic}
     """Processes"""
     Qube = MotorProcess(frequency=250)
     # Plotting = PlotProcess()  # not implemented yet
@@ -36,13 +36,13 @@ def control():
     stop_flag = multiprocessing.Value('b', False)
     state = multiprocessing.Array('d', [state0[0], state0[1], state0[2], state0[3]])
     action = multiprocessing.Value('d', 0)
-    currents = multiprocessing.Array('d', [0, 0])  # what's this for?
+    reward = multiprocessing.Array('d', [0, 0])  # what's this for?
     receiver, sender = multiprocessing.Pipe()
     """Timespan of Calculation"""
     end_loop_time = 20
     """initialize the Processes"""
-    p1 = Process(target=rl_loop, args=(state, currents, action, sender, stop_flag))
-    p2 = Process(target=Qube.loop_state_check, args=(state, stop_flag, action, currents,))
+    p1 = Process(target=rl_loop, args=(state, reward, action, sender, stop_flag))
+    p2 = Process(target=Qube.loop_state_check, args=(state, stop_flag, action, reward,))
     # p3 = Process(target=Plotting.plot_loop, args=(state, step_size, receiver,))
     """start the Processes"""
     p1.start()

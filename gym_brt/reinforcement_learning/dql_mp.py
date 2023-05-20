@@ -3,6 +3,7 @@ adapted from the deep q learning tutorial at:
 https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 changed: - the environment to the QubeSwingupEnv
 """
+import time
 
 # import gym_brt.envs.qube_swingup_env as qse
 import gym
@@ -26,6 +27,11 @@ import torch.nn.functional as F
 
 # quality of life
 from tqdm import tqdm
+import logging
+
+# Multicore
+import multiprocessing
+from multiprocessing import Process
 
 print("running torch version: ", torch.__version__)
 
@@ -44,7 +50,7 @@ GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.1  # originally 0.05
 EPS_DECAY = 10000  # originally 1000
-TAU = 0.005 # for soft update of target parameters
+TAU = 0.005  # for soft update of target parameters
 LR = 1e-4
 
 # settings
@@ -89,12 +95,12 @@ parser.add_argument(
 
 args, _ = parser.parse_known_args()
 
-renderer = True # args.render  # render each episode?
+renderer = False  # args.render  # render each episode?
 track = args.track
 load = args.load != ""
 path = args.load
 num_episodes = args.episodes
-simulation = True # args.simulation
+simulation = False  # args.simulation
 learn = args.learn
 save_episodes = args.save_episodes
 track_energy = track  # replace with own parameter?
@@ -268,59 +274,59 @@ def optimize_model():
     optimizer.step()
 
 
-def train():
+def train(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_episode_mp, reset_flag, stop_flag, state_prev_mp):
     if torch.cuda.is_available():
         print(f"Running on GPU: {torch.cuda.get_device_name()}, number of episodes: {num_episodes}")
     else:
         print(f"Running on CPU, number of episodes: {num_episodes}")
 
     # main training loop
-    try:  # ensures environment closes to not brick the board
-        if track:
-            min_alphas = []
-            rewards = []
-        # tracking best reward to continuously save the best model as a countermeasure to catastrophic forgetting
-        top_reward = 0
-        for i_episode in tqdm(range(num_episodes)):
-            # initialize the environment and get it's state
-            state = env.reset()
-            state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-            if track:
-                total_reward = 0
-                alpha = []
-            for t in count():
-                action = select_action(state)
-                # observation, reward, terminated, truncated, _ = env.step(action.item())
-                observation, reward, terminated, _ = env.step(action.item())  # match def of qube base env
-                # ~ state, reward, done, _ = env.step(action) from:
-                # https://github.com/BlueRiverTech/quanser-openai-driver/blob/main/docs/alternatives.md#usage
-                reward = torch.tensor([reward], device=device)
-                # qube base only uses done instead of differentiating between terminated and truncated
-                done = terminated  # or truncated
 
-                if terminated:
-                    next_state = None
-                    print(f"finished after {t + 1} steps with x = {state}")  # print alpha at end of episode
+    if track:
+        min_alphas = []
+        rewards = []
+    # tracking best reward to continuously save the best model as a countermeasure to catastrophic forgetting
+    top_reward = 0
+    for i_episode in tqdm(range(num_episodes)):
+        # initialize the environment and get it's state
+        t_current = 0
+        t_last = 0
+        while True:
+            time_start = time.time()
+            t_current = t_mp.value
+            if t_current <= t_last:  # checks if in sync with hardware controller
+                logging.warning(f"{t_current} steps info episode {i_episode}: {t_current - t_last - 1} samples have been missed!")
 
-                # renderer used in test.py
-                if renderer:
-                    env.render()
-                if track:
-                    total_reward += reward.item()
-                    alpha.append(abs(observation[1]))
+            action = select_action(state)
+            action_mp.value = action.item()
+            # # observation, reward, terminated, truncated, _ = env.step(action.item())
+            # observation, reward, terminated, _ = env.step(action.item())  # match def of qube base env
+            # # ~ state, reward, done, _ = env.step(action) from:
+            # # https://github.com/BlueRiverTech/quanser-openai-driver/blob/main/docs/alternatives.md#usage
+            # reward = torch.tensor([reward_mp.value], device=device)
+            # # qube base only uses done instead of differentiating between terminated and truncated
+            # done = terminated  # or truncated
+            #
+            # if terminated:
+            #     next_state = None
+            #     print(f"finished after {t + 1} steps with x = {state}")  # print alpha at end of episode
+            #
+            # # renderer used in test.py
+            # if renderer:
+            #     env.render()
+            # if track:
+            #     # total_reward += reward.item()
+            #     alpha.append(abs(observation[1]))
 
-                next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+            next_state = torch.tensor(state_prev_mp.value, dtype=torch.float32, device=device).unsqueeze(0)
 
-                # Store the transition in memory
-                memory.push(state, action, next_state, reward)
+            # Todo: check if memory push is sensible here or in the hardware controller!!!
+            # # Store the transition in memory
+            # memory.push(state, action, next_state, reward)
 
-                if track:
-                    log.update(state, action[0, 0], reward[0], done)
-
-                # Move to the next state
-                state = next_state
-
-                if learn:
+            if learn:
+                # Perform one step of the optimization (on the policy network)
+                try:
                     # Perform one step of the optimization (on the policy network)
                     optimize_model()
 
@@ -330,48 +336,112 @@ def train():
                     policy_net_state_dict = policy_net.state_dict()
                     for key in policy_net_state_dict:
                         target_net_state_dict[key] = policy_net_state_dict[key] * TAU + target_net_state_dict[key] * (
-                                    1 - TAU)
+                                1 - TAU)
                     target_net.load_state_dict(target_net_state_dict)
 
-                if done:
-                    episode_durations.append(t + 1)
-                    # plot_durations()  # only sensible if episode limit is reached
-                    break
+                except RuntimeError as e:
+                    logging.error(e)
+                    logging.warning("skipping optimization step due to error!")
 
-            if (i_episode % int(
-                    num_episodes / 10) == 0 and i_episode != 0) or runtime_duration_tracking or i_episode == num_episodes - 1:
+            t_last = t_current  # update time step tracking
 
-                print("plotting episode...")
-                # plot_durations(show_result=False)  # made redundant by log.plot_episode()
-                if i_episode == num_episodes - 1:
-                    # plt.savefig('result.png')
-                    print('finished training')
-                    if learn:
-                        torch.save(policy_net.state_dict(), 'trained_models/model.pt')
-                    log.save()
-                elif learn:
-                    # save backup of net:
-                    torch.save(policy_net.state_dict(), f'trained_models/model_in_e={i_episode}.pt')
-                # plt.ioff()
-                # plt.show()
-                if track:
-                    log.plot_episode()  # TODO: test
+            time_end = time.time()
+            logging.debug(f"hardware controller step took {(time_end - time_start) * 1000} ms")
 
-            if total_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
-                top_reward = total_reward
-                torch.save(policy_net.state_dict(), f'trained_models/dql_best_performance.pt')
+            if done_mp.value:
+                logging.info(f"Episode {i_episode} finished:\ttotal reward: {reward_episode_mp.value},\tduration: {t_mp.value}")
+                break
+
+        if (i_episode % int(num_episodes / 10) == 0 and i_episode != 0) or runtime_duration_tracking or i_episode == num_episodes - 1:
+
+            print("plotting episode...")
+
+            if i_episode == num_episodes - 1:
+
+                print(f'finished training after {i_episode + 1} episodes')
+                if learn:
+                    torch.save(policy_net.state_dict(), 'trained_models/model.pt')
+                log.save()
+                stop_flag.value = True
+            elif learn:
+                # save backup of net:
+                torch.save(policy_net.state_dict(), f'trained_models/model_in_e={i_episode}.pt')
+
             if track:
-                print(f"total reward: {total_reward}")
-                log.calc()
-                # rewards.append(total_reward)
-                # min_alphas.append(min(alpha))
+                log.plot_episode()  # TODO: test
 
-        if track:
-            log.plot_all()
+        if reward_episode_mp.value > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
+            logging.info(f"new best performance: {reward_episode_mp.value}, saving model...")
+            top_reward = reward_episode_mp.value
+            torch.save(policy_net.state_dict(), f'trained_models/dql_best_performance.pt')
 
+
+def hardware_controller(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_episode_mp, reset_flag, stop_flag, state_prev_mp):
+    try:
+        while not stop_flag.value:
+            time_start = time.time()
+            state_prev_mp.value = state_mp.value
+            state_mp.value, reward_mp.value, done_mp.value, _ = env.step(action_mp.value)
+            # tracking using datalogger
+            if track:
+                log.update(state_mp.value, action_mp.value, reward_mp.value, done_mp.value)
+            # Store the transition in memory
+            # TODO: check if this is sensible here or in the training loop!!!
+            # this way no state action paired are lost due to missed samples
+            memory.push(state_prev_mp.value, action_mp.value, state_mp.value, reward_mp.value)
+            # running totals
+            reward_episode_mp.value += reward_mp.value
+            t_mp.value += 1
+            time_end = time.time()
+            logging.debug(f"hardware controller step took {(time_end - time_start) * 1000} ms")
+            if done_mp.value or reset_flag.value:  # TODO: is reset_flag redundant?
+                # Todo: maybe replace with separate reset function?
+                t_mp.value = 0
+                reward_episode_mp.value = 0
+                state_mp.value = env.reset()
+                reset_flag.value = False
+                if track:
+                    log.calc()
+                break
+        logging.info("hardware controller stopped")
     finally:
         env.close()
 
 
+def control():
+    if simulation:
+        train()
+    else:
+        # shared variables
+        state_mp = multiprocessing.Array('d', [0, 0, 0, 0])  # TODO: add alternative start state for balance
+        state_prev_mp = multiprocessing.Array('d', [0, 0, 0, 0])
+        # ensure that state and state_prev are correctly initialized
+        state_prev_mp.value = env.reset()
+        state_mp.value = state_prev_mp.value
+        reward_mp = multiprocessing.Value('d', 0)
+        done_mp = multiprocessing.Value('b', False)
+        action_mp = multiprocessing.Value('d', 0)
+        t_mp = multiprocessing.Value('i', 0)
+        # cumulative
+        reward_episode_mp = multiprocessing.Value('d', 0)
+        # flags
+        stop_flag = multiprocessing.Value('b', False)  # tells hardware controller to stop, after training done
+        reset_flag = multiprocessing.Value('b', False)  # tells hardware controller to reset, after episode done
+
+
+        # individual processes, initialized with shared variables
+        training_process = Process(target=train, args=(state_mp, reward_mp, done_mp, action_mp, t_mp,
+                                                       reset_flag, stop_flag, state_prev_mp))
+        controller_process = Process(target=hardware_controller, args=(state_mp, reward_mp, done_mp, action_mp, t_mp,
+                                                                       reset_flag, stop_flag, state_prev_mp))
+        # start processes
+        training_process.start()
+        controller_process.start()
+        # wait for processes to finish
+        training_process.join()
+        controller_process.join()
+
+
 if __name__ == '__main__':
-    train()
+    control()
+    logging.info("all processes finished, exiting...")

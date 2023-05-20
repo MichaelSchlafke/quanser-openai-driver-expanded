@@ -24,7 +24,7 @@ from tqdm import tqdm
 from dql import *
 
 
-def dql(state, observation, action, sender, stop_flag):
+def dql(state, reward, action, sender, stop_flag):
     """
     Deep Q-Learning, modified to use multiprocessing for communication between the training process and the hardware.
     """
@@ -132,3 +132,11 @@ def dql(state, observation, action, sender, stop_flag):
 
     finally:
         env.close()
+
+
+def reinforce():
+    raise NotImplementedError
+
+
+def actor_critic():
+    raise NotImplementedError
