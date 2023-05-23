@@ -274,7 +274,7 @@ def optimize_model():
     optimizer.step()
 
 
-def train(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_episode_mp, reset_flag, stop_flag, state_prev_mp):
+def train(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_episode_mp, reset_flag, stop_flag, state_prev_mp, step_flag):
     if torch.cuda.is_available():
         print(f"Running on GPU: {torch.cuda.get_device_name()}, number of episodes: {num_episodes}")
     else:
@@ -292,6 +292,8 @@ def train(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_episode_mp, rese
         t_current = 0
         t_last = 0
         while True:
+            if not step_flag.value:
+                continue
             time_start = time.time()
             t_current = t_mp.value
             if t_current <= t_last:  # checks if in sync with hardware controller
@@ -376,12 +378,13 @@ def train(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_episode_mp, rese
             torch.save(policy_net.state_dict(), f'trained_models/dql_best_performance.pt')
 
 
-def hardware_controller(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_episode_mp, reset_flag, stop_flag, state_prev_mp):
+def hardware_controller(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_episode_mp, reset_flag, stop_flag, state_prev_mp, step_flag):
     try:
         while not stop_flag.value:
             time_start = time.time()
             state_prev_mp.value = state_mp.value
             state_mp.value, reward_mp.value, done_mp.value, _ = env.step(action_mp.value)
+            step_flag.value = True
             # tracking using datalogger
             if track:
                 log.update(state_mp.value, action_mp.value, reward_mp.value, done_mp.value)
@@ -427,13 +430,13 @@ def control():
         # flags
         stop_flag = multiprocessing.Value('b', False)  # tells hardware controller to stop, after training done
         reset_flag = multiprocessing.Value('b', False)  # tells hardware controller to reset, after episode done
-
+        step_flag = multiprocessing.Value('b', True)  # tells training loop that new step is ready
 
         # individual processes, initialized with shared variables
         training_process = Process(target=train, args=(state_mp, reward_mp, done_mp, action_mp, t_mp,
-                                                       reset_flag, stop_flag, state_prev_mp))
+                                                       reset_flag, stop_flag, state_prev_mp, step_flag))
         controller_process = Process(target=hardware_controller, args=(state_mp, reward_mp, done_mp, action_mp, t_mp,
-                                                                       reset_flag, stop_flag, state_prev_mp))
+                                                                       reset_flag, stop_flag, state_prev_mp, step_flag))
         # start processes
         training_process.start()
         controller_process.start()
