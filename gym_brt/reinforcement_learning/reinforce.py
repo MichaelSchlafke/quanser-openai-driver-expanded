@@ -12,6 +12,7 @@ from torch.distributions import Categorical
 from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv
 from gym_brt.envs.qube_swingup_custom_env import QubeSwingupStatesSquaredEnv
 from gym_brt.reinforcement_learning.data_collection import Log
+import time
 
 
 parser = argparse.ArgumentParser(description='PyTorch REINFORCE')
@@ -158,14 +159,19 @@ def main():
             state = env.reset()
             ep_reward = 0
             for t in range(1, 10000):  # Don't infinite loop while learning
+                t_start = time.time()
                 action = select_action(state)
+                t_a = time.time()
                 state, reward, done, _ = env.step(action)
+                t_step = time.time()
                 policy.rewards.append(reward)
                 ep_reward += reward
                 if renderer:
                     env.render()
                 if done:
                     break
+                t_end = time.time()
+                print(f"timing of each segment:\n\t- choose action:\t{(t_a - t_start)*1000}\n\t- environment step\t{(t_step - t_start)*1000}\n\t- total:\t{(t_end - t_start)*1000}")
 
             running_reward = 0.05 * ep_reward + (1 - 0.05) * running_reward
             finish_episode()

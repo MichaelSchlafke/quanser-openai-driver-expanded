@@ -32,6 +32,8 @@ import torch.nn.functional as F
 # quality of life
 from tqdm import tqdm
 
+import time
+
 print("running torch version: ", torch.__version__)
 
 parser = argparse.ArgumentParser()  # sets up argument parsing
@@ -285,6 +287,8 @@ if torch.cuda.is_available():
 else:
     print(f"Running on CPU -> number of episodes: {num_episodes}")
 
+track = False
+
 # main training loop
 try:  # ensures environment closes to not brick the board
     if track:
@@ -298,9 +302,16 @@ try:  # ensures environment closes to not brick the board
             total_reward = 0
             alpha = []
         for t in count():
+            t_start = time.time()
             action = select_action(state)
+            t_a = time.time()
+            print(f"select action.: {(t_a - t_start) * 1000}ms")
             # observation, reward, terminated, truncated, _ = env.step(action.item())
             observation, reward, terminated, _ = env.step(action.item())  # match def of qube base env
+            t_env = time.time()
+            print(f"environment step.: {(t_env - t_a) * 1000}ms")
+            t_basic = time.time()
+            print(f"basic checks and obs.: {(t_basic - t_start) * 1000}ms")
             # ~ state, reward, done, _ = env.step(action) from:
             # https://github.com/BlueRiverTech/quanser-openai-driver/blob/main/docs/alternatives.md#usage
             reward = torch.tensor([reward], device=device)
@@ -320,11 +331,21 @@ try:  # ensures environment closes to not brick the board
 
             next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
 
+            t_basic = time.time()
+            print(f"basic checks and obs.: {(t_basic - t_start) * 1000}ms")
+
             # Store the transition in memory
             memory.push(state, action, next_state, reward)
 
+            t_mem = time.time()
+            print(f"push memory {(t_mem - t_basic) * 1000}ms")
+
             if track:
                 log.update(state, action[0, 0], reward[0], done)
+                t_log = time.time()
+                print(f"log to pandas.: {(t_log - t_mem) * 1000}ms")
+
+            time_temp = time.time()
 
             # Move to the next state
             state = next_state
@@ -332,6 +353,9 @@ try:  # ensures environment closes to not brick the board
             if learn:
                 # Perform one step of the optimization (on the policy network)
                 optimize_model()
+                time_optim = time.time()
+                print(f"optimizing the  model.: {(time_optim - time_temp) * 1000}ms")
+
 
                 # Soft update of the target network's weights
                 # θ′ ← τ θ + (1 −τ )θ′
@@ -340,11 +364,15 @@ try:  # ensures environment closes to not brick the board
                 for key in policy_net_state_dict:
                     target_net_state_dict[key] = policy_net_state_dict[key] * TAU + target_net_state_dict[key] * (1 - TAU)
                 target_net.load_state_dict(target_net_state_dict)
+                time_write_nn = time.time()
+                print(f"write nn.: {(time_write_nn - time_optim) * 1000}ms")
 
             if done:
                 episode_durations.append(t + 1)
                 # plot_durations()  # only sensible if episode limit is reached
                 break
+            t_end_of_step = time.time()
+            print(f"total time for step {t}.: {(t_end_of_step - t_start) * 1000}ms")
 
         if (i_episode % int(num_episodes/10) == 0 and i_episode != 0) or runtime_duration_tracking or i_episode == num_episodes - 1:
 
@@ -364,13 +392,18 @@ try:  # ensures environment closes to not brick the board
             if track:
                 log.plot_episode()  # TODO: test
 
-
+        time_checks = time.time()
+        print(f"checks and qol.: {(time_checks - time_write_nn) * 1000}ms")
 
         if track:
             print(f"total reward: {total_reward}")
             log.calc()
             # rewards.append(total_reward)
             # min_alphas.append(min(alpha))
+
+        time_calc = time.time()
+        print(f"checks and qol.: {(time_calc - time_checks) * 1000}ms")
+        print(f"total time.: {(time_checks - t_start) * 1000}ms")
 
     if track:
         log.plot_all()
