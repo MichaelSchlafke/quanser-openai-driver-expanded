@@ -26,6 +26,8 @@ import torch.nn.functional as F
 
 # quality of life
 from tqdm import tqdm
+import time as timer
+import logging
 
 print("running torch version: ", torch.__version__)
 
@@ -89,12 +91,12 @@ parser.add_argument(
 
 args, _ = parser.parse_known_args()
 
-renderer = True # args.render  # render each episode?
+renderer = False # args.render  # render each episode?
 track = args.track
 load = args.load != ""
 path = args.load
 num_episodes = args.episodes
-simulation = True # args.simulation
+simulation = False # args.simulation
 learn = args.learn
 save_episodes = args.save_episodes
 track_energy = track  # replace with own parameter?
@@ -289,9 +291,15 @@ def train():
                 total_reward = 0
                 alpha = []
             for t in count():
+                timings = f"timings in step {t}:"
+                t1 = timer.time()
                 action = select_action(state)
+                t2 = timer.time()
+                timings += f"\n\t- model evaluation for action selection took {(t2 - t1) * 1000}ms"
                 # observation, reward, terminated, truncated, _ = env.step(action.item())
                 observation, reward, terminated, _ = env.step(action.item())  # match def of qube base env
+                t3 = timer.time()
+                timings += f"\n\t- environment step took {(t3 - t2) * 1000}ms"
                 # ~ state, reward, done, _ = env.step(action) from:
                 # https://github.com/BlueRiverTech/quanser-openai-driver/blob/main/docs/alternatives.md#usage
                 reward = torch.tensor([reward], device=device)
@@ -300,7 +308,7 @@ def train():
 
                 if terminated:
                     next_state = None
-                    print(f"finished after {t + 1} steps with x = {state}")  # print alpha at end of episode
+                    timings += f"\n\t- finished after {t + 1} steps with x = {state}"  # print alpha at end of episode
 
                 # renderer used in test.py
                 if renderer:
@@ -312,7 +320,10 @@ def train():
                 next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
 
                 # Store the transition in memory
+
                 memory.push(state, action, next_state, reward)
+                t4 = timer.time()
+                timings += f"\n\t- saving to replay buffer took {(t4 - t3) * 1000}ms"
 
                 if track:
                     log.update(state, action[0, 0], reward[0], done)
@@ -332,6 +343,15 @@ def train():
                         target_net_state_dict[key] = policy_net_state_dict[key] * TAU + target_net_state_dict[key] * (
                                     1 - TAU)
                     target_net.load_state_dict(target_net_state_dict)
+
+                    t5 = timer.time()
+                    timings += f"\n\t- optimizing the model {(t5 - t4) * 1000}ms"
+
+                t6 = timer.time()
+                if (t6 - t1) * 1000 > 4:
+                    logging.warning(f"total time of episode: {(t6 - t1) * 1000 }ms exeeds 4ms budget!\n" + timings)
+                else:
+                    logging.debug(timings)
 
                 if done:
                     episode_durations.append(t + 1)

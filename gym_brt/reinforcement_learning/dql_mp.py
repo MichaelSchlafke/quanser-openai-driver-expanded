@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 from collections import namedtuple, deque
 from itertools import count
 import argparse
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -134,7 +135,11 @@ class ReplayMemory(object):
         self.memory.append(Transition(*args))
 
     def sample(self, batch_size):
-        return random.sample(self.memory, batch_size)
+        sample_mem = random.sample(self.memory, batch_size)
+        if type(sample_mem) is np.ndarray:
+            sample_mem = torch.from_numpy(sample_mem)  # converts numpy array to tensor if necessary
+        return sample_mem
+        # return random.sample(self.memory, batch_size)
 
     def __len__(self):
         return len(self.memory)
@@ -164,6 +169,10 @@ n_observations = len(state)
 
 policy_net = DQN(n_observations, n_actions).to(device)
 target_net = DQN(n_observations, n_actions).to(device)
+# match model precision to data TODO: is the performance impact negligible?
+policy_net = policy_net.to(torch.double)
+target_net = target_net.to(torch.double)
+
 if load:
     try:
         if torch.cuda.is_available():  # checks if running on gpu
@@ -188,12 +197,18 @@ def select_action(state):
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
                     math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
+    if type(state) is np.ndarray:
+        state = torch.from_numpy(state)  # converts numpy array to tensor if necessary
+        state.to(torch.double)
     if sample > eps_threshold or not learn:
         with torch.no_grad():
             # t.max(1) will return the largest column value of each row.
             # second column on max result is index of where max element was
             # found, so we pick action with the larger expected reward.
-            return policy_net(state).max(1)[1].view(1, 1)
+            # print(policy_net(state))
+            # print(torch.argmax(policy_net(state)))
+            return torch.argmax(policy_net(state))
+            # return policy_net(state).max(1)[1].view(1, 1) # formatting broken by mp
     else:
         return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
 
@@ -231,6 +246,8 @@ def optimize_model():
     if len(memory) < BATCH_SIZE:
         return
     transitions = memory.sample(BATCH_SIZE)
+    if type(transitions) is not torch.tensor:
+        logging.error(f"Datatype of transitions is {type(transitions)}, but it should be a torch tensor!")
     # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
     # detailed explanation). This converts batch-array of Transitions
     # to Transition of batch-arrays.
@@ -242,6 +259,7 @@ def optimize_model():
                                             batch.next_state)), device=device, dtype=torch.bool)
     non_final_next_states = torch.cat([s for s in batch.next_state
                                        if s is not None])
+
     state_batch = torch.cat(batch.state)
     action_batch = torch.cat(batch.action)
     reward_batch = torch.cat(batch.reward)
@@ -293,14 +311,15 @@ def train(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_episode_mp, rese
         t_last = 0
         while True:
             if not step_flag.value:
+                logger.info(f"training loop skipped since hardware not ready")
                 continue
             time_start = time.time()
             t_current = t_mp.value
-            if t_current <= t_last:  # checks if in sync with hardware controller
-                logging.warning(f"{t_current} steps info episode {i_episode}: {t_current - t_last - 1} samples have been missed!")
+            if t_current - t_last - 1 > 0:  # checks if in sync with hardware controller
+                logging.warning(f"{t_current} steps into episode {i_episode}: {t_current - t_last - 1} samples have been missed!")
 
-            action = select_action(state)
-            action_mp.value = action.item()
+            action_mp.value = select_action(state)
+            # action_mp.value = action.item()
             # # observation, reward, terminated, truncated, _ = env.step(action.item())
             # observation, reward, terminated, _ = env.step(action.item())  # match def of qube base env
             # # ~ state, reward, done, _ = env.step(action) from:
@@ -378,7 +397,8 @@ def train(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_episode_mp, rese
             torch.save(policy_net.state_dict(), f'trained_models/dql_best_performance.pt')
 
 
-def hardware_controller(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_episode_mp, reset_flag, stop_flag, state_prev_mp, step_flag):
+def hardware_controller(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_episode_mp, reset_flag, stop_flag,
+                        state_prev_mp, step_flag):
     try:
         while not stop_flag.value:
             time_start = time.time()
@@ -399,6 +419,7 @@ def hardware_controller(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_ep
             logging.debug(f"hardware controller step took {(time_end - time_start) * 1000} ms")
             if done_mp.value or reset_flag.value:  # TODO: is reset_flag redundant?
                 # Todo: maybe replace with separate reset function?
+                print("episode ended")
                 t_mp.value = 0
                 reward_episode_mp.value = 0
                 state_mp.value = env.reset()
@@ -433,10 +454,11 @@ def control():
         step_flag = multiprocessing.Value('b', True)  # tells training loop that new step is ready
 
         # individual processes, initialized with shared variables
-        training_process = Process(target=train, args=(state_mp, reward_mp, done_mp, action_mp, t_mp,
+        training_process = Process(target=train, args=(state_mp, reward_mp, done_mp, action_mp, t_mp, reward_episode_mp,
                                                        reset_flag, stop_flag, state_prev_mp, step_flag))
         controller_process = Process(target=hardware_controller, args=(state_mp, reward_mp, done_mp, action_mp, t_mp,
-                                                                       reset_flag, stop_flag, state_prev_mp, step_flag))
+                                                                       reward_episode_mp, reset_flag, stop_flag,
+                                                                       state_prev_mp, step_flag))
         # start processes
         training_process.start()
         controller_process.start()
@@ -446,5 +468,6 @@ def control():
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)  # TODO: TEMP
     control()
     logging.info("all processes finished, exiting...")
