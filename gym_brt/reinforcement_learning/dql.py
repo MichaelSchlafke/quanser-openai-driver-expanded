@@ -96,7 +96,7 @@ track = args.track
 load = args.load != ""
 path = args.load
 num_episodes = args.episodes
-simulation = False # args.simulation
+simulation = True # args.simulation
 learn = args.learn
 save_episodes = args.save_episodes
 track_energy = track  # replace with own parameter?
