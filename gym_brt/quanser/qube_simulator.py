@@ -41,6 +41,9 @@ def diff_forward_model_ode(state, t, action, dt):
     diff_state = np.array([theta_dot, alpha_dot, theta_dot_dot, alpha_dot_dot]).reshape(
         (4,)
     )
+    # temp debug for vm:
+    print(f"theta_dot={theta_dot},alpha_dot={alpha_dot},theta_dot_dot={theta_dot_dot},alpha_dot_dot={alpha_dot_dot}")
+    print(f"diff_state={diff_state}")
     diff_state = np.array(diff_state, dtype="float64")
     return diff_state
 
