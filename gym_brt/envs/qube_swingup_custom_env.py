@@ -69,9 +69,9 @@ class QubeSwingupStatesSquaredEnv(QubeBaseEnv):
 
 
 class QubeSwingupDescActEnv(QubeDiscBaseEnv):
-    """"
+    """
         Reward:
-        r(s_t, a_t) = 1 - (0.75 * alpha^2 + 0.15 * theta^2 + 0.05 * alpha_dot^2 + 0.05 * theta_dot^2)
+        r(s_t, a_t) = 1 - (0.8 * |alpha| + 0.2 * |theta|)
         with a penalty of -100 if the angle limit of θ ∈ (-π,π) is exceeded
     """
     def _reward(self):
@@ -96,6 +96,39 @@ class QubeSwingupDescActEnv(QubeDiscBaseEnv):
         super(QubeSwingupDescActEnv, self).reset()
         state = self._reset_down()
         return state
+
+class QubeSwingupStatesSquaredEnvDesc(QubeDiscBaseEnv):
+    """
+        Reward:
+        r(s_t, a_t) = 1 - (0.75 * alpha^2 + 0.15 * theta^2 + 0.05 * alpha_dot^2 + 0.05 * theta_dot^2)
+        with a penalty of -100 if the angle limit of θ ∈ (-π,π) is exceeded
+    """
+    def _reward(self):
+        alpha_sqrd = np.square(self._alpha / np.pi)
+        theta_sqrd = np.square((self._target_angle - self._theta) / np.pi)
+        alpha_dot_sqrd = np.square(self._alpha_dot / np.pi)
+        theta_dot_sqrd = np.square(self._theta_dot / np.pi)
+        reward = 1 - (
+            (0.75 * alpha_sqrd + 0.15 * theta_sqrd + 0.05 * alpha_dot_sqrd + 0.05 * theta_dot_sqrd)
+        )
+        reward = max(reward, 0)  # Clip for the follow env case
+        # a high penalty for exceeding the angle limit is necessary to prevent the agent from getting stuck in the
+        # local minimum of ending the episode as soon as possible
+        if abs(self._theta) > (90 * np.pi / 180):
+            reward -= 100  # needs to be higher than the maximum reward for the case mentioned above
+        return reward
+
+    def _isdone(self):
+        done = False
+        done |= self._episode_steps >= self._max_episode_steps
+        done |= abs(self._theta) > (90 * np.pi / 180)
+        return done
+
+    def reset(self):
+        super(QubeSwingupStatesSquaredEnvDesc, self).reset()
+        state = self._reset_down()
+        return state
+
 
 # Integral doesn't make sense because the reward is not sparse and thus is already taken into account for each step
 
