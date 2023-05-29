@@ -394,6 +394,7 @@ def train():
             if total_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
                 top_reward = total_reward
                 torch.save(policy_net.state_dict(), f'trained_models/dql_best_performance.pt')
+                torch.save(target_net.state_dict(), f'trained_models/dql_best_performance_state_dict.pt')
             if track:
                 print(f"total reward: {total_reward}")
                 log.calc()
