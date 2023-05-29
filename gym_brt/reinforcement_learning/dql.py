@@ -7,7 +7,7 @@ changed: - the environment to the QubeSwingupEnv
 # import gym_brt.envs.qube_swingup_env as qse
 import gym
 from gym_brt.envs.qube_swingup_env import QubeSwingupEnv
-from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv
+from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv, QubeSwingupStatesSquaredEnvDesc
 from gym_brt.reinforcement_learning.data_collection import Log
 
 # import gymnasium as gym
@@ -88,6 +88,12 @@ parser.add_argument(
     default=False, type=bool,
     help="toggles saving of episodes as csv",
 )
+parser.add_argument(
+    "-R", "--Reward",
+    default="original", type=str,
+    help="choose reward function",
+    choices=["original", "state_diff", "lqr"],
+)
 
 args, _ = parser.parse_known_args()
 
@@ -98,13 +104,21 @@ path = args.load
 num_episodes = args.episodes
 simulation = True # args.simulation
 learn = args.learn
+learn = True
 save_episodes = args.save_episodes
+save_episodes = False
 track_energy = track  # replace with own parameter?
+reward_f = args.Reward
 
 if track:
     log = Log(save_episodes=save_episodes, track_energy=track_energy)
 
-env = QubeSwingupDescActEnv(use_simulator=simulation)
+if reward_f == "original":
+    env = QubeSwingupDescActEnv(use_simulator=simulation)
+elif reward_f == "state_diff":
+    env = QubeSwingupStatesSquaredEnvDesc(use_simulator=simulation)
+else:
+    logging.error(f"reward function {reward_f} not implemented")
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -348,7 +362,7 @@ def train():
                     timings += f"\n\t- optimizing the model {(t5 - t4) * 1000}ms"
 
                 t6 = timer.time()
-                if (t6 - t1) * 1000 > 4:
+                if (t6 - t1) * 1000 > 4 and not simulation:
                     logging.warning(f"total time of episode: {(t6 - t1) * 1000 }ms exeeds 4ms budget!\n" + timings)
                 else:
                     logging.debug(timings)
