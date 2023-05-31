@@ -15,6 +15,9 @@ from gym_brt.reinforcement_learning.data_collection import Log
 
 parser = argparse.ArgumentParser(description='PyTorch REINFORCE')
 
+# if GPU is to be used
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # settings
 runtime_duration_tracking = False
 # in cartpole this equates to the number if frames the pole has to be raised for the task to be completed
@@ -85,6 +88,7 @@ simulation = args.simulation
 learn = args.learn
 save_episodes = args.save_episodes
 track_energy = track  # replace with own parameter?
+reward_f = args.Reward
 
 if track:
     log = Log(save_episodes=save_episodes, track_energy=track_energy)
@@ -100,7 +104,6 @@ else:
 env.reset()
 torch.manual_seed(args.seed)
 
-
 class Policy(nn.Module):
     def __init__(self):
         super(Policy, self).__init__()
@@ -113,6 +116,7 @@ class Policy(nn.Module):
         self.rewards = []
 
     def forward(self, x):
+        x = x.to(device)
         x = self.affine1(x)
         # x = self.affine2(x)
         x = self.dropout(x)
@@ -121,10 +125,13 @@ class Policy(nn.Module):
         return F.softmax(action_scores, dim=1)
 
 
-policy = Policy()
+policy = Policy().to(device)
 if path != "":
     try:
-        policy.load_state_dict(torch.load(path))
+        if torch.cuda.is_available():  # checks if running on gpu
+            policy.load_state_dict(torch.load(path))
+        else:  # ensures that state dict is loaded to cpu
+            policy.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
     except FileNotFoundError:
         print("File not found. Training new model.")
 optimizer = optim.Adam(policy.parameters(), lr=1e-2)
@@ -135,7 +142,7 @@ def select_action(state):
     state = torch.from_numpy(state).float().unsqueeze(0)
     probs = policy(state)
     m = Categorical(probs)
-    action = m.sample()
+    action = m.sample().to(device)
     policy.saved_log_probs.append(m.log_prob(action))
     return action.item()
 
@@ -170,7 +177,10 @@ def train():
             action = select_action(state)
             state, reward, done, _ = env.step(action)
             if track:
-                log.update(state, action[0, 0], reward[0], done)
+                log.update(state, action, reward, done)
+            state = torch.tensor(state, device=device)
+            reward = torch.tensor(reward, device=device)
+            done = torch.tensor(done, device=device)
             policy.rewards.append(reward)
             ep_reward += reward
             if renderer:

@@ -7,7 +7,7 @@ changed: - the environment to the QubeSwingupEnv
 # import gym_brt.envs.qube_swingup_env as qse
 import gym
 from gym_brt.envs.qube_swingup_env import QubeSwingupEnv
-from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv, QubeSwingupStatesSquaredEnvDesc
+from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv, QubeSwingupStatesSquaredEnvDesc, QubeOnlySwingupDescActEnv
 from gym_brt.reinforcement_learning.data_collection import Log
 
 # import gymnasium as gym
@@ -92,7 +92,7 @@ parser.add_argument(
     "-R", "--Reward",
     default="original", type=str,
     help="choose reward function",
-    choices=["original", "state_diff", "lqr"],
+    choices=["original", "state_diff", "lqr", "original+onlySwingUp"],
 )
 
 args, _ = parser.parse_known_args()
@@ -117,6 +117,8 @@ if reward_f == "original":
     env = QubeSwingupDescActEnv(use_simulator=simulation)
 elif reward_f == "state_diff":
     env = QubeSwingupStatesSquaredEnvDesc(use_simulator=simulation)
+elif reward_f == "original+onlySwingUp":
+    env = QubeOnlySwingupDescActEnv(use_simulator=simulation)
 else:
     logging.error(f"reward function {reward_f} not implemented")
 

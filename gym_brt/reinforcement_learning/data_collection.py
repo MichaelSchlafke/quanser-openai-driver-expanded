@@ -58,13 +58,17 @@ class Log:
     def update(self, state, action, reward, terminated):
         self.t += 1  # tracks time
         # convert from tensor to numpy array
-        action = action.cpu()
-        action = action.detach().numpy()
-        reward = reward.cpu()
-        reward = reward.detach().numpy()
-        state = state.cpu()
-        state = state.detach().numpy()
-        state = state[0, :]  # converts from 2D array to 1D array
+        if type(action) == torch.Tensor:
+            action = action.cpu()
+            action = action.detach().numpy()
+        if type(reward) == torch.Tensor:
+            reward = reward.cpu()
+            reward = reward.detach().numpy()
+        if type(state) == torch.Tensor:
+            state = state.cpu()
+            state = state.detach().numpy()
+            if state.size == 1:
+                state = state[0, :]  # converts from 2D array to 1D array
 
         # calculate and save energy over time
         if self.track_energy:
