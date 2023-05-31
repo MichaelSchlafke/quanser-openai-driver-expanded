@@ -104,9 +104,9 @@ path = args.load
 num_episodes = args.episodes
 simulation = True # args.simulation
 learn = args.learn
-learn = True
+learn = False
 save_episodes = args.save_episodes
-save_episodes = False
+save_episodes = True
 track_energy = track  # replace with own parameter?
 reward_f = args.Reward
 

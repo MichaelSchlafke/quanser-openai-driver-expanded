@@ -102,6 +102,7 @@ class QubeOnlySwingupDescActEnv(QubeDiscBaseEnv):
         Reward:
         r(s_t, a_t) = 1 - (0.8 * |alpha| + 0.2 * |theta|)
         with a penalty of -100 if the angle limit of θ ∈ (-π,π) is exceeded
+        and a reward of 1000 if the pendulum is upright (|α| < 10°)
         Ends as soon as the pendulum is up!
     """
     def _reward(self):
@@ -114,6 +115,8 @@ class QubeOnlySwingupDescActEnv(QubeDiscBaseEnv):
         # local minimum of ending the episode as soon as possible
         if abs(self._theta) > (90 * np.pi / 180):
             reward -= 100  # needs to be higher than the maximum reward for the case mentioned above
+        if abs(self._alpha) < (10 * np.pi / 180):
+            reward += 1000
         return reward
 
     def _isdone(self):

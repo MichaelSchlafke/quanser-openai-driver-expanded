@@ -1,4 +1,6 @@
 import argparse
+import logging
+
 import gym
 import numpy as np
 from itertools import count
@@ -9,7 +11,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
 # custom classes
-from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv
+from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv, QubeSwingupStatesSquaredEnvDesc
 from gym_brt.reinforcement_learning.data_collection import Log
 
 
@@ -122,10 +124,12 @@ class Policy(nn.Module):
         x = self.dropout(x)
         x = F.relu(x)
         action_scores = self.affine3(x)
-        return F.softmax(action_scores, dim=1)
+        print(x)
+        return F.softmax(action_scores, dim=1), x
 
 
 policy = Policy().to(device)
+policy = policy.float()
 if path != "":
     try:
         if torch.cuda.is_available():  # checks if running on gpu
@@ -139,8 +143,9 @@ eps = np.finfo(np.float32).eps.item()
 
 
 def select_action(state):
-    state = torch.from_numpy(state).float().unsqueeze(0)
-    probs = policy(state)
+    if type(state) == np.ndarray:
+        state = torch.from_numpy(state).float().unsqueeze(0)
+    probs, _ = policy(state.float())
     m = Categorical(probs)
     action = m.sample().to(device)
     policy.saved_log_probs.append(m.log_prob(action))
