@@ -84,12 +84,13 @@ def main():
     numsteps = []
     avg_numsteps = []
     all_rewards = []
-    best_reward = 0
+    best_reward = 1
 
     for episode in tqdm(range(max_episode_num)):
         state = env.reset()
         log_probs = []
         rewards = []
+        ep_reward = 0
 
         for steps in range(max_steps):
             if render:
@@ -99,6 +100,7 @@ def main():
             log.update(new_state, action, reward, done)
             log_probs.append(log_prob)
             rewards.append(reward)
+            ep_reward += reward
 
             if done:
                 update_policy(policy_net, rewards, log_probs)
@@ -106,9 +108,9 @@ def main():
                 avg_numsteps.append(np.mean(numsteps[-10:]))
                 all_rewards.append(np.sum(rewards))
                 log.calc()
-                if reward > best_reward * 1.05:
-                    print(f"new best reward of {reward} in episode {episode}, beating {best_reward}")
-                    best_reward = reward
+                if ep_reward > best_reward * 1.05:
+                    print(f"new best reward of {ep_reward} in episode {episode}, beating {best_reward}")
+                    best_reward = ep_reward
                     torch.save(policy_net.state_dict(), f'./trained_models/REINFORCE_best_rew.pth')
                 if episode % 1 == 0:
                     sys.stdout.write(
