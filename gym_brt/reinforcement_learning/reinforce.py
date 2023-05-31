@@ -67,6 +67,12 @@ parser.add_argument(
     default=False, type=bool,
     help="toggles saving of episodes as csv",
 )
+parser.add_argument(
+    "-R", "--Reward",
+    default="original", type=str,
+    help="choose reward function",
+    choices=["original", "state_diff", "lqr"],
+)
 
 args, _ = parser.parse_known_args()
 
@@ -83,7 +89,12 @@ track_energy = track  # replace with own parameter?
 if track:
     log = Log(save_episodes=save_episodes, track_energy=track_energy)
 
-env = QubeSwingupDescActEnv(use_simulator=simulation)
+if reward_f == "original":
+    env = QubeSwingupDescActEnv(use_simulator=simulation)
+elif reward_f == "state_diff":
+    env = QubeSwingupStatesSquaredEnvDesc(use_simulator=simulation)
+else:
+    logging.error(f"reward function {reward_f} not implemented")
 
 # env.reset(seed=args.seed)  # TODO: keep or remove?
 env.reset()
@@ -94,17 +105,19 @@ class Policy(nn.Module):
     def __init__(self):
         super(Policy, self).__init__()
         self.affine1 = nn.Linear(4, 512)
+        self.affine2 = nn.Linear(512, 512)
         self.dropout = nn.Dropout(p=0.6)
-        self.affine2 = nn.Linear(512, 3)
+        self.affine3 = nn.Linear(512, 3)
 
         self.saved_log_probs = []
         self.rewards = []
 
     def forward(self, x):
         x = self.affine1(x)
+        x = self.affine2(x)
         x = self.dropout(x)
         x = F.relu(x)
-        action_scores = self.affine2(x)
+        action_scores = self.affine3(x)
         return F.softmax(action_scores, dim=1)
 
 
@@ -156,6 +169,8 @@ def train():
         for t in range(1, 10000):  # Don't infinite loop while learning
             action = select_action(state)
             state, reward, done, _ = env.step(action)
+            if track:
+                log.update(state, action[0, 0], reward[0], done)
             policy.rewards.append(reward)
             ep_reward += reward
             if renderer:
@@ -165,11 +180,14 @@ def train():
 
         running_reward = 0.05 * ep_reward + (1 - 0.05) * running_reward
         finish_episode()
+        if track:
+            log.calc()
         if i_episode % args.log_interval == 0:
             print('Episode {}\tLast reward: {:.2f}\tAverage reward: {:.2f}'.format(
                   i_episode, ep_reward, running_reward))
         if i_episode % 100 == 0:
             torch.save(policy.state_dict(), f'trained_models/reinforce_e={i_episode}.pt')
+            log.save()
         elif ep_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
             top_reward = ep_reward
             torch.save(policy.state_dict(), f'trained_models/resolve_best_performance.pt')
