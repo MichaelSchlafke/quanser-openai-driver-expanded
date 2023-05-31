@@ -105,7 +105,7 @@ class Policy(nn.Module):
     def __init__(self):
         super(Policy, self).__init__()
         self.affine1 = nn.Linear(4, 512)
-        self.affine2 = nn.Linear(512, 512)
+        # self.affine2 = nn.Linear(512, 512)
         self.dropout = nn.Dropout(p=0.6)
         self.affine3 = nn.Linear(512, 3)
 
@@ -114,7 +114,7 @@ class Policy(nn.Module):
 
     def forward(self, x):
         x = self.affine1(x)
-        x = self.affine2(x)
+        # x = self.affine2(x)
         x = self.dropout(x)
         x = F.relu(x)
         action_scores = self.affine3(x)
