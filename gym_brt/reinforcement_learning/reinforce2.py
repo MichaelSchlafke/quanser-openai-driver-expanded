@@ -114,7 +114,7 @@ def main():
                     sys.stdout.write(
                         "episode: {}, total reward: {}, average_reward: {}, length: {}\n".format(episode, np.round(
                             np.sum(rewards), decimals=3), np.round(np.mean(all_rewards[-10:]), decimals=3), steps))
-                if episode % 10 == 0:
+                if episode % 1000 == 0:
                     torch.save(policy_net.state_dict(), f'./trained_models/REINFORCE_e={episode}.pth')
                     log.save()
                 if episode == max_episode_num - 1:
