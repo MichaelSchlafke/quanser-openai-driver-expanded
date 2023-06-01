@@ -97,6 +97,41 @@ class QubeSwingupDescActEnv(QubeDiscBaseEnv):
         state = self._reset_down()
         return state
 
+class QubeOnlySwingupDescActEnv(QubeDiscBaseEnv):
+    """
+        Reward:
+        r(s_t, a_t) = 1 - (0.8 * |alpha| + 0.2 * |theta|)
+        with a penalty of -100 if the angle limit of θ ∈ (-π,π) is exceeded
+        and a reward of 1000 if the pendulum is upright (|α| < 10°)
+        Ends as soon as the pendulum is up!
+    """
+    def _reward(self):
+        reward = 1 - (
+                (0.8 * np.abs(self._alpha) + 0.2 * np.abs(self._target_angle - self._theta))
+                / np.pi
+        )
+        reward = max(reward, 0)  # Clip for the follow env case
+        # a high penalty for exceeding the angle limit is necessary to prevent the agent from getting stuck in the
+        # local minimum of ending the episode as soon as possible
+        if abs(self._theta) > (90 * np.pi / 180):
+            reward -= 100  # needs to be higher than the maximum reward for the case mentioned above
+        if abs(self._alpha) < (10 * np.pi / 180):
+            reward += 1000
+        return reward
+
+    def _isdone(self):
+        done = False
+        done |= self._episode_steps >= self._max_episode_steps
+        done |= abs(self._theta) > (90 * np.pi / 180)
+        done |= abs(self._alpha) < (10 * np.pi / 180)
+        return done
+
+    def reset(self):
+        super(QubeOnlySwingupDescActEnv, self).reset()
+        state = self._reset_down()
+        return state
+
+
 class QubeSwingupStatesSquaredEnvDesc(QubeDiscBaseEnv):
     """
         Reward:

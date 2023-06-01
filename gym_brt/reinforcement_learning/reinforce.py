@@ -1,4 +1,6 @@
 import argparse
+import logging
+
 import gym
 import numpy as np
 from itertools import count
@@ -9,11 +11,14 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
 # custom classes
-from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv
+from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv, QubeSwingupStatesSquaredEnvDesc
 from gym_brt.reinforcement_learning.data_collection import Log
 
 
 parser = argparse.ArgumentParser(description='PyTorch REINFORCE')
+
+# if GPU is to be used
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # settings
 runtime_duration_tracking = False
@@ -67,6 +72,12 @@ parser.add_argument(
     default=False, type=bool,
     help="toggles saving of episodes as csv",
 )
+parser.add_argument(
+    "-R", "--Reward",
+    default="original", type=str,
+    help="choose reward function",
+    choices=["original", "state_diff", "lqr"],
+)
 
 args, _ = parser.parse_known_args()
 
@@ -79,39 +90,52 @@ simulation = args.simulation
 learn = args.learn
 save_episodes = args.save_episodes
 track_energy = track  # replace with own parameter?
+reward_f = args.Reward
 
 if track:
     log = Log(save_episodes=save_episodes, track_energy=track_energy)
 
-env = QubeSwingupDescActEnv(use_simulator=simulation)
+if reward_f == "original":
+    env = QubeSwingupDescActEnv(use_simulator=simulation)
+elif reward_f == "state_diff":
+    env = QubeSwingupStatesSquaredEnvDesc(use_simulator=simulation)
+else:
+    logging.error(f"reward function {reward_f} not implemented")
 
 # env.reset(seed=args.seed)  # TODO: keep or remove?
 env.reset()
 torch.manual_seed(args.seed)
 
-
 class Policy(nn.Module):
     def __init__(self):
         super(Policy, self).__init__()
         self.affine1 = nn.Linear(4, 512)
+        # self.affine2 = nn.Linear(512, 512)
         self.dropout = nn.Dropout(p=0.6)
-        self.affine2 = nn.Linear(512, 3)
+        self.affine3 = nn.Linear(512, 3)
 
         self.saved_log_probs = []
         self.rewards = []
 
     def forward(self, x):
+        x = x.to(device)
         x = self.affine1(x)
+        # x = self.affine2(x)
         x = self.dropout(x)
         x = F.relu(x)
-        action_scores = self.affine2(x)
-        return F.softmax(action_scores, dim=1)
+        action_scores = self.affine3(x)
+        print(x)
+        return F.softmax(action_scores, dim=1), x
 
 
-policy = Policy()
+policy = Policy().to(device)
+policy = policy.float()
 if path != "":
     try:
-        policy.load_state_dict(torch.load(path))
+        if torch.cuda.is_available():  # checks if running on gpu
+            policy.load_state_dict(torch.load(path))
+        else:  # ensures that state dict is loaded to cpu
+            policy.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
     except FileNotFoundError:
         print("File not found. Training new model.")
 optimizer = optim.Adam(policy.parameters(), lr=1e-2)
@@ -119,10 +143,11 @@ eps = np.finfo(np.float32).eps.item()
 
 
 def select_action(state):
-    state = torch.from_numpy(state).float().unsqueeze(0)
-    probs = policy(state)
+    if type(state) == np.ndarray:
+        state = torch.from_numpy(state).float().unsqueeze(0)
+    probs, _ = policy(state.float())
     m = Categorical(probs)
-    action = m.sample()
+    action = m.sample().to(device)
     policy.saved_log_probs.append(m.log_prob(action))
     return action.item()
 
@@ -156,6 +181,11 @@ def train():
         for t in range(1, 10000):  # Don't infinite loop while learning
             action = select_action(state)
             state, reward, done, _ = env.step(action)
+            if track:
+                log.update(state, action, reward, done)
+            state = torch.tensor(state, device=device)
+            reward = torch.tensor(reward, device=device)
+            done = torch.tensor(done, device=device)
             policy.rewards.append(reward)
             ep_reward += reward
             if renderer:
@@ -165,11 +195,14 @@ def train():
 
         running_reward = 0.05 * ep_reward + (1 - 0.05) * running_reward
         finish_episode()
+        if track:
+            log.calc()
         if i_episode % args.log_interval == 0:
             print('Episode {}\tLast reward: {:.2f}\tAverage reward: {:.2f}'.format(
                   i_episode, ep_reward, running_reward))
         if i_episode % 100 == 0:
             torch.save(policy.state_dict(), f'trained_models/reinforce_e={i_episode}.pt')
+            log.save()
         elif ep_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
             top_reward = ep_reward
             torch.save(policy.state_dict(), f'trained_models/resolve_best_performance.pt')

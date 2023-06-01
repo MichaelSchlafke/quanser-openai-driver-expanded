@@ -52,19 +52,26 @@ class Log:
         self.settling_time = np.nan
         self.log = pd.DataFrame(columns=['theta', 'alpha', 'theta_dot', 'alpha_dot', 'action', 'reward'],)
         self.episode_log = pd.DataFrame(columns=['avg_theta', 'avg_alpha', 'avg_theta_dot', 'avg_alpha_dot',
-                                                 'max_theta', 'max_alpha', 'max_theta_dot', 'max_alpha_dot',
-                                                 'sum_action', 'time_up', 'hit constraints', 'reward', 'successful'])
+                                                 'max_theta', 'min_alpha', 'max_theta_dot', 'max_alpha_dot',
+                                                 'sum_action','time_steps', 'time', 'time_up', 'hit constraints',
+                                                 'reward', 'successful'])
 
     def update(self, state, action, reward, terminated):
         self.t += 1  # tracks time
         # convert from tensor to numpy array
-        action = action.cpu()
-        action = action.detach().numpy()
-        reward = reward.cpu()
-        reward = reward.detach().numpy()
-        state = state.cpu()
-        state = state.detach().numpy()
-        state = state[0, :]  # converts from 2D array to 1D array
+        if type(action) == torch.Tensor:
+            action = action.cpu()
+            action = action.detach().numpy()
+        if type(reward) == torch.Tensor:
+            reward = reward.cpu()
+            reward = reward.detach().numpy()
+        if type(state) == torch.Tensor:
+            state = state.cpu()
+            state = state.detach().numpy()
+            if state.ndim == 2:
+                state = state[0, :]  # converts from 2D array to 1D array
+
+        # debug: print(f"state: {state}, reward: {reward}, action: {action}, terminated: {terminated}")
 
         # calculate and save energy over time
         if self.track_energy:
@@ -106,14 +113,16 @@ class Log:
             print("calculation of overshoot and settling time failed critically!")
         alpha = self.log['alpha'].to_numpy()
         time_up = (np.pi/2. > np.absolute(alpha)).sum()  # TODO verify
-        successfull = np.pi/2. > np.absolute(np.max(alpha)) # TODO verify
+        successfull = np.pi/2. > np.absolute(np.min(alpha)) # TODO verify
         self.episode_log = self.episode_log.append({'avg_theta': np.mean(self.log['theta']), 'avg_alpha': np.mean(self.log['alpha']),
                                     'avg_theta_dot': np.mean(self.log['theta_dot']),
                                     'avg_alpha_dot': np.mean(self.log['alpha_dot']),
-                                    'max_theta': np.max(self.log['theta']), 'max_alpha': np.max(self.log['alpha']),
-                                    'max_theta_dot': np.max(self.log['theta_dot']),
-                                    'max_alpha_dot': np.max(self.log['alpha_dot']),
+                                    'max_theta': abs(np.max(self.log['theta'])), 'min_alpha': abs(np.min(self.log['alpha'])),
+                                    'max_theta_dot': abs(np.max(self.log['theta_dot'])),
+                                    'max_alpha_dot': abs(np.max(self.log['alpha_dot'])),
                                     'sum_action': np.sum(self.log['action']),
+                                    'time_steps': len(self.log.index),
+                                    'time': float(len(self.log.index)) * 4 / 1000,
                                     'time_up': time_up,
                                     'hit constraints': self.ended_early,  # TODO FIX THIS, ALWAYS TRUE!
                                     'reward': self.log['reward'].sum(),
@@ -186,8 +195,8 @@ class Log:
         plt.title('max_theta')
         plt.figure(5)
         plt.show()
-        plt.hist(self.episode_log['max_alpha'])
-        plt.title('max_alpha')
+        plt.hist(self.episode_log['min_alpha'])
+        plt.title('min_alpha')
         plt.figure(6)
         plt.show()
         plt.hist(self.episode_log['max_theta_dot'])

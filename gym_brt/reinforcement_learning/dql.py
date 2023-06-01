@@ -7,7 +7,7 @@ changed: - the environment to the QubeSwingupEnv
 # import gym_brt.envs.qube_swingup_env as qse
 import gym
 from gym_brt.envs.qube_swingup_env import QubeSwingupEnv
-from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv, QubeSwingupStatesSquaredEnvDesc
+from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv, QubeSwingupStatesSquaredEnvDesc, QubeOnlySwingupDescActEnv
 from gym_brt.reinforcement_learning.data_collection import Log
 
 # import gymnasium as gym
@@ -92,7 +92,7 @@ parser.add_argument(
     "-R", "--Reward",
     default="original", type=str,
     help="choose reward function",
-    choices=["original", "state_diff", "lqr"],
+    choices=["original", "state_diff", "lqr", "original+onlySwingUp"],
 )
 
 args, _ = parser.parse_known_args()
@@ -104,9 +104,9 @@ path = args.load
 num_episodes = args.episodes
 simulation = True # args.simulation
 learn = args.learn
-learn = True
+learn = False
 save_episodes = args.save_episodes
-save_episodes = False
+save_episodes = True
 track_energy = track  # replace with own parameter?
 reward_f = args.Reward
 
@@ -117,6 +117,8 @@ if reward_f == "original":
     env = QubeSwingupDescActEnv(use_simulator=simulation)
 elif reward_f == "state_diff":
     env = QubeSwingupStatesSquaredEnvDesc(use_simulator=simulation)
+elif reward_f == "original+onlySwingUp":
+    env = QubeOnlySwingupDescActEnv(use_simulator=simulation)
 else:
     logging.error(f"reward function {reward_f} not implemented")
 
@@ -394,6 +396,7 @@ def train():
             if total_reward > top_reward * 1.1:  # extra 10% to reduce unnecessary saving overhead
                 top_reward = total_reward
                 torch.save(policy_net.state_dict(), f'trained_models/dql_best_performance.pt')
+                torch.save(target_net.state_dict(), f'trained_models/dql_best_performance_state_dict.pt')
             if track:
                 print(f"total reward: {total_reward}")
                 log.calc()
