@@ -8,10 +8,12 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
 # custom classes
-from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv, QubeSwingupStatesSquaredEnvDesc
+from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv, QubeSwingupStatesSquaredEnvDesc, \
+    QubeOnlySwingupDescActEnv
 from gym_brt.reinforcement_learning.data_collection import Log
 # QoL imports
 from tqdm import tqdm
+import logging
 
 # Constants
 GAMMA = 0.9
@@ -22,12 +24,23 @@ save_episodes = False
 track_energy = True
 render = True
 learn = True
+simulation = True
 path = input("Enter path to model to load: ")
+env_type = input("Enter type of environment to use: ")
 if path != "":
     learn = False
     track = True
     save_episodes = True
     track_energy = True
+
+if env_type == "original":
+    env = QubeSwingupDescActEnv(use_simulator=simulation)
+elif env_type == "state_diff":
+    env = QubeSwingupStatesSquaredEnvDesc(use_simulator=simulation)
+elif env_type == "original+onlySwingUp":
+    env = QubeOnlySwingupDescActEnv(use_simulator=simulation)
+else:
+    logging.error(f"reward function {env_type} not implemented")
 
 if track:
     log = Log(save_episodes=save_episodes, track_energy=track_energy)
