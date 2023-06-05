@@ -22,7 +22,7 @@ GAMMA = 0.9
 track = True
 save_episodes = False
 track_energy = True
-render = True
+render = False
 learn = True
 simulation = True
 path = input("Enter path to model to load: ")
@@ -96,7 +96,7 @@ def update_policy(policy_network, rewards, log_probs):
 
 
 def main():
-    env = QubeSwingupDescActEnv(use_simulator=True, )
+    # env = QubeSwingupDescActEnv(use_simulator=True, )
     policy_net = PolicyNetwork(env.observation_space.shape[0], env.action_space.n, 512).to(device)
     if path != "":
         policy_net.load_state_dict(torch.load(path))
