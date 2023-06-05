@@ -19,8 +19,15 @@ GAMMA = 0.9
 # settings
 track = True
 save_episodes = False
-track_energy = False
-render = False
+track_energy = True
+render = True
+learn = True
+path = input("Enter path to model to load: ")
+if path != "":
+    learn = False
+    track = True
+    save_episodes = True
+    track_energy = True
 
 if track:
     log = Log(save_episodes=save_episodes, track_energy=track_energy)
@@ -78,8 +85,11 @@ def update_policy(policy_network, rewards, log_probs):
 def main():
     env = QubeSwingupDescActEnv(use_simulator=True, )
     policy_net = PolicyNetwork(env.observation_space.shape[0], env.action_space.n, 512).to(device)
-
+    if path != "":
+        policy_net.load_state_dict(torch.load(path))
     max_episode_num = 10000
+    if not learn:
+        max_episode_num = 100
     max_steps = 10000
     numsteps = []
     avg_numsteps = []
@@ -103,12 +113,13 @@ def main():
             ep_reward += reward
 
             if done:
-                update_policy(policy_net, rewards, log_probs)
+                if learn:
+                    update_policy(policy_net, rewards, log_probs)
                 numsteps.append(steps)
                 avg_numsteps.append(np.mean(numsteps[-10:]))
                 all_rewards.append(np.sum(rewards))
                 log.calc()
-                if ep_reward > best_reward * 1.05:
+                if (ep_reward > best_reward * 1.05) and learn:
                     print(f"new best reward of {ep_reward} in episode {episode}, beating {best_reward}")
                     best_reward = ep_reward
                     torch.save(policy_net.state_dict(), f'./trained_models/REINFORCE_best_rew.pth')
@@ -117,10 +128,12 @@ def main():
                         "episode: {}, total reward: {}, average_reward: {}, length: {}\n".format(episode, np.round(
                             np.sum(rewards), decimals=3), np.round(np.mean(all_rewards[-10:]), decimals=3), steps))
                 if episode % 1000 == 0:
-                    torch.save(policy_net.state_dict(), f'./trained_models/REINFORCE_e={episode}.pth')
+                    if learn:
+                        torch.save(policy_net.state_dict(), f'./trained_models/REINFORCE_e={episode}.pth')
                     log.save()
                 if episode == max_episode_num - 1:
-                    torch.save(policy_net.state_dict(), './trained_models/REINFORCE.pth')
+                    if learn:
+                        torch.save(policy_net.state_dict(), './trained_models/REINFORCE.pth')
                 break
 
             state = new_state

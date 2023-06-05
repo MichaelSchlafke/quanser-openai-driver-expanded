@@ -7,7 +7,8 @@ changed: - the environment to the QubeSwingupEnv
 # import gym_brt.envs.qube_swingup_env as qse
 import gym
 from gym_brt.envs.qube_swingup_env import QubeSwingupEnv
-from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv, QubeSwingupStatesSquaredEnvDesc, QubeOnlySwingupDescActEnv
+from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv, QubeSwingupStatesSquaredEnvDesc, \
+    QubeOnlySwingupDescActEnv
 from gym_brt.reinforcement_learning.data_collection import Log
 
 # import gymnasium as gym
@@ -46,7 +47,7 @@ GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.1  # originally 0.05
 EPS_DECAY = 10000  # originally 1000
-TAU = 0.005 # for soft update of target parameters
+TAU = 0.005  # for soft update of target parameters
 LR = 1e-4
 
 # settings
@@ -94,21 +95,28 @@ parser.add_argument(
     help="choose reward function",
     choices=["original", "state_diff", "lqr", "original+onlySwingUp"],
 )
+parser.add_argument(
+    "-nn", "--neural_network_topology",
+    default="small", type=str,
+    help="choose neural network topology",
+    choices=["small", "large"],
+)
 
 args, _ = parser.parse_known_args()
 
-renderer = False # args.render  # render each episode?
+renderer = False  # args.render  # render each episode?
 track = args.track
 load = args.load != ""
 path = args.load
 num_episodes = args.episodes
-simulation = True # args.simulation
+simulation = True  # args.simulation
 learn = args.learn
 learn = False
 save_episodes = args.save_episodes
 save_episodes = True
 track_energy = track  # replace with own parameter?
 reward_f = args.Reward
+nn_topology = args.neural_network_topology
 
 if track:
     log = Log(save_episodes=save_episodes, track_energy=track_energy)
@@ -168,14 +176,38 @@ class DQN(nn.Module):
         return self.layer3(x)
 
 
+class DQNLarger(nn.Module):
+
+    def __init__(self, n_observations, n_actions):
+        super(DQNLarger, self).__init__()
+        self.layer1 = nn.Linear(n_observations, 512)
+        self.layer2 = nn.Linear(512, 512)
+        self.layer3 = nn.Linear(512, 512)
+        self.layer4 = nn.Linear(512, 512)
+        self.layer5 = nn.Linear(512, n_actions)
+
+    def forward(self, x):
+        x = F.relu(self.layer1(x))
+        x = F.relu(self.layer2(x))
+        x = F.relu(self.layer3(x))
+        x = F.relu(self.layer4(x))
+        return self.layer5(x)
+
+
 # Get number of actions from gym action space
 n_actions = env.action_space.n  # TODO: ensure compatability with discrete action spaces
 # Get the number of state observations
 state = env.reset()
 n_observations = len(state)
+if nn_topology == "small":
+    policy_net = DQN(n_observations, n_actions).to(device)
+    target_net = DQN(n_observations, n_actions).to(device)
+elif nn_topology == "large":
+    policy_net = DQNLarger(n_observations, n_actions).to(device)
+    target_net = DQNLarger(n_observations, n_actions).to(device)
+else:
+    logging.error(f"neural network topology {nn_topology} not implemented")
 
-policy_net = DQN(n_observations, n_actions).to(device)
-target_net = DQN(n_observations, n_actions).to(device)
 if load:
     try:
         if torch.cuda.is_available():  # checks if running on gpu
@@ -357,7 +389,7 @@ def train():
                     policy_net_state_dict = policy_net.state_dict()
                     for key in policy_net_state_dict:
                         target_net_state_dict[key] = policy_net_state_dict[key] * TAU + target_net_state_dict[key] * (
-                                    1 - TAU)
+                                1 - TAU)
                     target_net.load_state_dict(target_net_state_dict)
 
                     t5 = timer.time()
@@ -365,7 +397,7 @@ def train():
 
                 t6 = timer.time()
                 if (t6 - t1) * 1000 > 4 and not simulation:
-                    logging.warning(f"total time of episode: {(t6 - t1) * 1000 }ms exeeds 4ms budget!\n" + timings)
+                    logging.warning(f"total time of episode: {(t6 - t1) * 1000}ms exeeds 4ms budget!\n" + timings)
                 else:
                     logging.debug(timings)
 
