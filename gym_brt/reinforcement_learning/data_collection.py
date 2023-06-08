@@ -120,7 +120,7 @@ class Log:
                                     'max_theta': abs(np.max(self.log['theta'])), 'min_alpha': abs(np.min(self.log['alpha'])),
                                     'max_theta_dot': abs(np.max(self.log['theta_dot'])),
                                     'max_alpha_dot': abs(np.max(self.log['alpha_dot'])),
-                                    'sum_action': np.sum(self.log['action']),
+                                    'sum_action': np.sum((self.log['action'] - 1) * 3),
                                     'time_steps': len(self.log.index),
                                     'time': float(len(self.log.index)) * 4 / 1000,
                                     'time_up': time_up,

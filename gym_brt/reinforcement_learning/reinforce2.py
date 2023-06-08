@@ -1,6 +1,6 @@
 import sys
 import torch
-import gym
+# import gym
 import numpy as np
 import torch.nn as nn
 import torch.optim as optim
@@ -9,7 +9,7 @@ from torch.autograd import Variable
 import matplotlib.pyplot as plt
 # custom classes
 from gym_brt.envs.qube_swingup_custom_env import QubeSwingupDescActEnv, QubeSwingupStatesSquaredEnvDesc, \
-    QubeOnlySwingupDescActEnv
+    QubeOnlySwingupDescActEnv, QubeOnlySwingupStatesSquaredEnvDesc
 from gym_brt.reinforcement_learning.data_collection import Log
 # QoL imports
 from tqdm import tqdm
@@ -39,6 +39,8 @@ elif env_type == "state_diff":
     env = QubeSwingupStatesSquaredEnvDesc(use_simulator=simulation)
 elif env_type == "original+onlySwingUp":
     env = QubeOnlySwingupDescActEnv(use_simulator=simulation)
+elif env_type == "sqr+onlySwingUp":
+    env = QubeOnlySwingupStatesSquaredEnvDesc(use_simulator=simulation)
 else:
     logging.error(f"reward function {env_type} not implemented")
 
