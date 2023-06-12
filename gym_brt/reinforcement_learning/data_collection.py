@@ -50,13 +50,13 @@ class Log:
         self.rise_time = np.nan
         self.overshoot = np.nan
         self.settling_time = np.nan
-        self.log = pd.DataFrame(columns=['theta', 'alpha', 'theta_dot', 'alpha_dot', 'action', 'reward'],)
+        self.log = pd.DataFrame(columns=['theta', 'alpha', 'theta_dot', 'alpha_dot', 'action', 'reward', 'cost'],)
         self.episode_log = pd.DataFrame(columns=['avg_theta', 'avg_alpha', 'avg_theta_dot', 'avg_alpha_dot',
                                                  'max_theta', 'min_alpha', 'max_theta_dot', 'max_alpha_dot',
                                                  'sum_action','time_steps', 'time', 'time_up', 'hit constraints',
                                                  'reward', 'successful'])
 
-    def update(self, state, action, reward, terminated):
+    def update(self, state, action, reward, terminated, cost=np.nan):
         self.t += 1  # tracks time
         # convert from tensor to numpy array
         if type(action) == torch.Tensor:
@@ -70,23 +70,27 @@ class Log:
             state = state.detach().numpy()
             if state.ndim == 2:
                 state = state[0, :]  # converts from 2D array to 1D array
+        # alpha_dot = state[3]
+        # alpha_cont =
+
 
         # debug: print(f"state: {state}, reward: {reward}, action: {action}, terminated: {terminated}")
+        append_dict = {'theta': state[0], 'alpha': state[1], 'theta_dot': state[2], 'alpha_dot': state[3],
+                 'action': action - 1, 'reward': reward}
 
         # calculate and save energy over time
         if self.track_energy:
             E_kin, E_pot, E_tot = energy(state)
-            self.log = self.log.append(
-                {'theta': state[0], 'alpha': state[1], 'theta_dot': state[2], 'alpha_dot': state[3],
-                 'action': action, 'reward': reward, 'E_kin': E_kin, 'E_pot': E_pot, 'E_tot': E_tot}, ignore_index=True)
-        else:
-            self.log = self.log.append(
-                {'theta': state[0], 'alpha': state[1], 'theta_dot': state[2], 'alpha_dot': state[3],
-                 'action': action, 'reward': reward}, ignore_index=True)
+            append_dict.update({'E_kin': E_kin, 'E_pot': E_pot, 'E_tot': E_tot})
+        if cost is not np.nan:
+            append_dict.update({'cost': cost})
         # detect characteristics
         if abs(state[1]) < np.pi * 0.1 and np.isnan(self.rise_time):
             self.rise_time = self.t  # TODO verify
         self.ended_early = terminated
+
+        # append to log
+        self.log = self.log.append(append_dict, ignore_index=True)
 
     def calc(self):
         """
@@ -111,6 +115,13 @@ class Log:
             self.overshoot = np.nan
             self.settling_time = np.nan
             print("calculation of overshoot and settling time failed critically!")
+        try:  # calculations depending on cost
+            cost_per_t = self.log('cost').mean()
+            cost_sum = self.log('cost').sum()
+        except:
+            cost_per_t = np.nan
+            cost_sum = np.nan
+            print("calculation of cost due to missing support in RL implementation!")
         alpha = self.log['alpha'].to_numpy()
         time_up = (np.pi/2. > np.absolute(alpha)).sum()  # TODO verify
         successfull = np.pi/2. > np.absolute(np.min(alpha)) # TODO verify
@@ -120,12 +131,14 @@ class Log:
                                     'max_theta': abs(np.max(self.log['theta'])), 'min_alpha': abs(np.min(self.log['alpha'])),
                                     'max_theta_dot': abs(np.max(self.log['theta_dot'])),
                                     'max_alpha_dot': abs(np.max(self.log['alpha_dot'])),
-                                    'sum_action': np.sum((self.log['action'] - 1) * 3),
+                                    'sum_action': np.sum(self.log['action'] * 3),
                                     'time_steps': len(self.log.index),
                                     'time': float(len(self.log.index)) * 4 / 1000,
                                     'time_up': time_up,
                                     'hit constraints': self.ended_early,  # TODO FIX THIS, ALWAYS TRUE!
                                     'reward': self.log['reward'].sum(),
+                                    'cost': cost_sum,
+                                    'cost_per_step': cost_per_t,
                                     'successful': successfull,
                                     'rise_time': self.rise_time,
                                     'overshoot': self.overshoot,

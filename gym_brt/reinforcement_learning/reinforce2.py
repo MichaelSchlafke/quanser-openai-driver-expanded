@@ -27,6 +27,7 @@ learn = True
 simulation = True
 path = input("Enter path to model to load: ")
 env_type = input("Enter type of environment to use: ")
+only_cost = input("Enter True if only cost is to be used: ")
 if path != "":
     learn = False
     track = True
@@ -122,7 +123,12 @@ def main():
                 env.render()
             action, log_prob = policy_net.get_action(state)
             new_state, reward, done, _ = env.step(action)
-            log.update(new_state, action, reward, done)
+            if only_cost:
+                reward -= 1
+                cost = reward
+            else:
+                cost = reward - 1
+            log.update(new_state, action, reward, done, cost=cost)
             log_probs.append(log_prob)
             rewards.append(reward)
             ep_reward += reward
